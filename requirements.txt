@@ -1,0 +1,12 @@
+# Runtime dependencies (pinned; Python 3.9+ compatible)
+requests==2.32.3
+python-chess==1.10.0
+fastapi==0.115.6
+uvicorn==0.34.0
+python-multipart==0.0.20
+numpy==1.26.4
+opencv-python-headless==4.10.0.84
+pytesseract==0.3.13
+
+# Test dependencies
+pytest==8.3.4

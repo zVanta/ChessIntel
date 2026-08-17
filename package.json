@@ -1,0 +1,37 @@
+{
+  "name": "checkmate-coach",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Automated coach reports for junior chess players (original product, no ChessIntel branding).",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:all": "pytest -q && vitest run",
+    "dev:service": "uvicorn service.main:app --reload --port 8000",
+    "dev:all": "concurrently -k -n service,web -c blue,green \"npm run dev:service\" \"npm run dev\""
+  },
+  "dependencies": {
+    "better-sqlite3": "11.5.0",
+    "chess.js": "1.0.0",
+    "next": "14.2.35",
+    "react": "18.3.1",
+    "react-chessboard": "4.7.2",
+    "react-dom": "18.3.1",
+    "stripe": "17.2.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "7.6.11",
+    "@types/node": "20.16.11",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "autoprefixer": "10.4.20",
+    "concurrently": "9.0.1",
+    "postcss": "8.4.47",
+    "tailwindcss": "3.4.14",
+    "typescript": "5.6.3",
+    "vitest": "2.1.3"
+  }
+}

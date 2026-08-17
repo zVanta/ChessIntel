@@ -1,0 +1,53 @@
+services:
+  # Python analysis + OCR service. Internal only — not published to the host.
+  service:
+    build:
+      context: .
+      dockerfile: service.Dockerfile
+    environment:
+      STOCKFISH_PATH: stockfish
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      LLM_ENDPOINT: ${LLM_ENDPOINT:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+    restart: unless-stopped
+
+  # Next.js web app — the only service exposed to the internet.
+  web:
+    build:
+      context: .
+      dockerfile: web.Dockerfile
+      args:
+        NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-Checkmate Coach}
+    environment:
+      DATABASE_PATH: /data/chess.db
+      PYTHON_SERVICE_URL: http://service:8000
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_ID: ${STRIPE_PRICE_ID:-}
+    volumes:
+      - chess-data:/data
+    ports:
+      - "127.0.0.1:3000:3000" # localhost only; Caddy is the public entrypoint
+    depends_on:
+      - service
+    restart: unless-stopped
+
+  # Reverse proxy + automatic Let's Encrypt TLS for chess.njxai.com.
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+
+volumes:
+  chess-data:
+  caddy-data:
+  caddy-config:

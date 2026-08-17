@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.checkmatecoach.app",
+      "sha256_cert_fingerprints": ["972268bc1fe7c6b8038cecb153181df67d3b634a2e57d8e79d69f42446b3500c"]
+    }
+  }
+]

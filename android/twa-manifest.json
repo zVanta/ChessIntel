@@ -1,0 +1,42 @@
+{
+  "packageId": "com.checkmatecoach.app",
+  "host": "chess.njxai.com",
+  "name": "Checkmate Coach",
+  "launcherName": "Checkmate",
+  "display": "standalone",
+  "themeColor": "#047857",
+  "navigationColor": "#047857",
+  "navigationColorDark": "#022c22",
+  "navigationDividerColor": "#022c22",
+  "navigationDividerColorDark": "#022c22",
+  "backgroundColor": "#ffffff",
+  "enableNotifications": false,
+  "startUrl": "/",
+  "iconUrl": "https://chess.njxai.com/icons/icon-512.png",
+  "maskableIconUrl": "https://chess.njxai.com/icons/icon-maskable-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "android.keystore",
+    "alias": "android"
+  },
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://chess.njxai.com/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://chess.njxai.com/",
+  "minSdkVersion": 21,
+  "orientation": "portrait",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "appVersion": "1.0.0"
+}

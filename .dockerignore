@@ -1,0 +1,25 @@
+# Build/runtime artifacts — never copy into Docker images
+node_modules
+.next
+.git
+.gitignore
+
+# Local Android tooling (not needed in the server images)
+android
+
+# Local data + tests
+data
+tests
+scripts
+.pytest_cache
+__pycache__
+**/__pycache__
+**/*.pyc
+
+# Secrets — passed at runtime, never baked into images
+.env
+.env.*
+!requirements.txt
+
+# Docs
+*.md

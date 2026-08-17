@@ -1,0 +1,7 @@
+# Reverse proxy for the chess coach app — automatic HTTPS via Let's Encrypt.
+# Requires an A record for "chess" pointing at this server's IP.
+
+chess.njxai.com {
+	reverse_proxy web:3000
+	encode gzip
+}

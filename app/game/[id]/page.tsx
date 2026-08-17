@@ -1,0 +1,48 @@
+import { notFound } from "next/navigation";
+import ChessGameViewer from "@/components/ChessGameViewer";
+import { getGame, getReport } from "@/lib/db";
+
+export const metadata = { title: "Game" };
+
+interface GameBlunder {
+  ply: number;
+  san?: string;
+  phase: string;
+  cp_loss: number;
+}
+
+export default function GamePage({ params }: { params: { id: string } }) {
+  const game = getGame(Number(params.id));
+  if (!game) notFound();
+
+  let blunders: GameBlunder[] = [];
+  const report = getReport(game.report_id);
+  if (report) {
+    try {
+      const payload = JSON.parse(report.json_payload) as {
+        games?: { external_id?: string | null; pgn?: string; blunders?: GameBlunder[] }[];
+      };
+      const match = (payload.games ?? []).find(
+        (g) =>
+          (g.external_id && g.external_id === game.external_id) ||
+          (g.pgn && g.pgn === game.pgn)
+      );
+      blunders = match?.blunders ?? [];
+    } catch {
+      blunders = [];
+    }
+  }
+
+  return (
+    <div>
+      <h1 className="text-2xl font-bold text-slate-900">Game review</h1>
+      <p className="mt-1 text-sm text-slate-600">
+        Source: {game.source}
+        {game.external_id ? ` · ${game.external_id}` : ""} · Analyzed: {game.analyzed_at}
+      </p>
+      <div className="mt-6">
+        <ChessGameViewer pgn={game.pgn} blunders={blunders} />
+      </div>
+    </div>
+  );
+}
