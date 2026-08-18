@@ -5,7 +5,7 @@ services:
       context: .
       dockerfile: service.Dockerfile
     environment:
-      STOCKFISH_PATH: stockfish
+      STOCKFISH_PATH: /usr/games/stockfish
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
       LLM_ENDPOINT: ${LLM_ENDPOINT:-}

@@ -16,6 +16,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
+# Debian installs stockfish to /usr/games, which is not on PATH in containers.
+RUN ln -sf /usr/games/stockfish /usr/local/bin/stockfish
+
 # Isolated environment (Debian bookworm marks the system Python as externally managed).
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
