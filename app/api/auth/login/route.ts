@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getUserByEmail } from "@/lib/db";
 import { verifyPassword } from "@/lib/password";
 import { createSessionToken, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth";
+import { rateLimited } from "@/lib/rateLimit";
 
 export async function POST(req: Request) {
   let body: unknown;
@@ -15,6 +16,11 @@ export async function POST(req: Request) {
   try {
     const email = typeof input.email === "string" ? input.email.trim().toLowerCase() : "";
     const password = typeof input.password === "string" ? input.password : "";
+
+    // Slow down brute-force attempts (10 tries per 15 minutes per email).
+    if (rateLimited(`login:${email || "unknown"}`, 10, 15 * 60 * 1000)) {
+      return NextResponse.json({ error: "Too many attempts. Try again later." }, { status: 429 });
+    }
 
     const user = getUserByEmail(email);
     if (!user || !verifyPassword(password, user.password_hash)) {

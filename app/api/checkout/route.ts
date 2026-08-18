@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { getKid } from "@/lib/db";
 import { getStripe, getStripePriceId } from "@/lib/stripe";
+import { getSessionUser, isAdmin } from "@/lib/auth";
 
 export async function POST(req: Request) {
+  const user = getSessionUser();
+  if (!user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+
   let body: unknown;
   try {
     body = await req.json();
@@ -17,6 +21,9 @@ export async function POST(req: Request) {
   }
   const kid = getKid(kidId);
   if (!kid) {
+    return NextResponse.json({ error: "Kid not found." }, { status: 404 });
+  }
+  if (!isAdmin(user) && kid.user_id != null && kid.user_id !== user.id) {
     return NextResponse.json({ error: "Kid not found." }, { status: 404 });
   }
 

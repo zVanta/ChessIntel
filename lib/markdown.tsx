@@ -27,8 +27,10 @@ function renderInline(text: string, keyBase: string): React.ReactNode[] {
     } else if (token.startsWith("[")) {
       const link = token.match(/^\[([^\]]*)\]\(([^)]*)\)$/);
       if (link) {
+        // Only allow safe schemes (no javascript:, data:, etc.).
+        const href = /^(https?:\/\/|mailto:)/i.test(link[2]) ? link[2] : "#";
         nodes.push(
-          <a key={`${keyBase}-a${i}`} href={link[2]} rel="noopener noreferrer">
+          <a key={`${keyBase}-a${i}`} href={href} rel="noopener noreferrer">
             {link[1]}
           </a>
         );

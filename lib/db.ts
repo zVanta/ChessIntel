@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { randomBytes } from "crypto";
 import fs from "fs";
 import path from "path";
 import { hashPassword } from "./password";
@@ -113,8 +114,20 @@ function seedAdmin(db: Database.Database): void {
     .get() as { id: number } | undefined;
   if (existing) return;
 
-  const email = process.env.ADMIN_EMAIL || "admin@checkmatecoach.app";
-  const password = process.env.ADMIN_PASSWORD || "4fc4c8604a6348b7aa84d0285f3920e3";
+  const email = process.env.ADMIN_EMAIL?.trim() || "admin@checkmatecoach.app";
+  // No hardcoded default password: if ADMIN_PASSWORD is unset, generate a
+  // random one and print it once so the operator can retrieve it from logs.
+  const password =
+    process.env.ADMIN_PASSWORD && process.env.ADMIN_PASSWORD.length > 0
+      ? process.env.ADMIN_PASSWORD
+      : (() => {
+          const generated = randomBytes(16).toString("hex");
+          console.warn("[auth] ADMIN_PASSWORD is not set — generated a random admin password.");
+          console.warn(`[auth] Admin login: ${email}`);
+          console.warn(`[auth] Admin password: ${generated}`);
+          console.warn("[auth] Set ADMIN_PASSWORD in your environment to make this permanent.");
+          return generated;
+        })();
   const hash = hashPassword(password);
   const info = db
     .prepare(`INSERT INTO users (email, password_hash, role, credits) VALUES (?, ?, 'admin', 999999)`)
