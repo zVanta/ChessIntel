@@ -384,6 +384,32 @@ _DEFAULT_DRILL = (
     "ten seconds."
 )
 
+
+def _make_drill(habit: str, ctx: Dict[str, Any]) -> str:
+    """Build a player-specific drill from this report's actual key moments.
+
+    Falls back to the generic habit drill only when there are no moments to
+    reference (e.g. a game with no detected blunders).
+    """
+    moments = ctx.get("moments") or []
+    if moments:
+        top = moments[0]
+        opponent = top.get("opponent") or "your opponent"
+        san = top.get("san") or "that move"
+        best = top.get("best")
+        if best:
+            return (
+                f"In the game vs {opponent}, rewind to {san} and play {best} instead — "
+                f"then say out loud why it's safer. Repeat for the other key moments "
+                f"in this report until the check is automatic."
+            )
+        return (
+            f"Set up the position just before {san} vs {opponent}, name what the move "
+            f"left undefended, and find the safer alternative. Repeat for each key "
+            f"moment in this report."
+        )
+    return _DRILLS.get(habit, _DEFAULT_DRILL)
+
 # Report document branding. Kept separate from any third-party product name —
 # this is the app's own brand.
 SITE_NAME: str = os.environ.get("SITE_NAME", "Checkmate Coach")
@@ -862,7 +888,6 @@ def generate_report(kid_name: str, habit: str, game_count: int,
     Uses the configured LLM provider (DeepSeek by default, or LibreChat — see
     llm.py); otherwise returns a deterministic fallback report.
     """
-    drill = _DRILLS.get(habit, _DEFAULT_DRILL)
     ctx = context or {
         "platform": "online",
         "date_range": "recent games",
@@ -874,6 +899,7 @@ def generate_report(kid_name: str, habit: str, game_count: int,
         "notes": "",
         "answers": [],
     }
+    drill = _make_drill(habit, ctx)
     fallback = _build_markdown_report(kid_name, habit, game_count, drill, ctx)
 
     try:
@@ -1012,7 +1038,7 @@ def run_analysis(platform: str, username: str, kid_name: str = "Player",
         "habit": top_habit,
         "summary_text": _short_version(markdown),
         "report_markdown": markdown,
-        "drill": _DRILLS.get(top_habit, _DEFAULT_DRILL),
+        "drill": _make_drill(top_habit, context),
         "points_lost": points_lost,
         "games": reports,
         "mcp_used": mcp_used,

@@ -102,7 +102,7 @@ def analyze_pgn(req: AnalyzePgnRequest) -> Dict[str, Any]:
         "habit": top_habit,
         "summary_text": chessintel_clone._short_version(markdown),
         "report_markdown": markdown,
-        "drill": chessintel_clone._DRILLS.get(top_habit, chessintel_clone._DEFAULT_DRILL),
+        "drill": chessintel_clone._make_drill(top_habit, context),
         "points_lost": points_lost,
         "games": [report],
     }
