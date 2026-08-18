@@ -1,6 +1,6 @@
 # Runtime dependencies (pinned; Python 3.9+ compatible)
 requests==2.32.3
-python-chess==1.10.0
+python-chess==1.0.1
 fastapi==0.115.6
 uvicorn==0.34.0
 python-multipart==0.0.20

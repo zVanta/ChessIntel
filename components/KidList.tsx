@@ -16,6 +16,7 @@ export default function KidList() {
     null
   );
   const [platforms, setPlatforms] = useState<Record<number, string>>({});
+  const [billingEnabled, setBillingEnabled] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -25,6 +26,7 @@ export default function KidList() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load players.");
       setKids(data.kids as KidWithMeta[]);
+      setBillingEnabled(Boolean(data.billingEnabled));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load players.");
     } finally {
@@ -114,7 +116,8 @@ export default function KidList() {
     <div className="space-y-6">
       {kids.map((kid) => {
         const platform = platforms[kid.id] || defaultPlatform(kid);
-        const needsSubscription = kid.reports_count > 0 && kid.subscription_status !== "active";
+        const needsSubscription =
+          billingEnabled && kid.reports_count > 0 && kid.subscription_status !== "active";
         return (
           <div
             key={kid.id}
@@ -130,10 +133,12 @@ export default function KidList() {
                 </p>
                 <p className="mt-1 text-sm text-slate-500">
                   {kid.reports_count === 0
-                    ? "No reports yet — the first one is free."
+                    ? billingEnabled
+                      ? "No reports yet — the first one is free."
+                      : "No reports yet."
                     : `Last report: ${kid.latest_report_at ?? "—"} · Tracking: ${kid.tracked_habit ?? "—"}`}
                 </p>
-                {kid.reports_count > 0 && (
+                {billingEnabled && kid.reports_count > 0 && (
                   <p
                     className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
                       kid.subscription_status === "active"

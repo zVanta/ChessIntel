@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { createKid, getKidsWithMeta } from "@/lib/db";
 import { validateKidInput } from "@/lib/validation";
+import { billingEnabled } from "@/lib/billing";
 
 export async function GET() {
   const kids = getKidsWithMeta();
-  return NextResponse.json({ kids });
+  return NextResponse.json({ kids, billingEnabled: billingEnabled() });
 }
 
 export async function POST(req: Request) {
