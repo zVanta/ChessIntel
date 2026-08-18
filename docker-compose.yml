@@ -28,6 +28,9 @@ services:
     environment:
       DATABASE_PATH: /data/chess.db
       PYTHON_SERVICE_URL: http://service:8000
+      AUTH_SECRET: ${AUTH_SECRET:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@checkmatecoach.app}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin1234}
       BILLING_ENABLED: ${BILLING_ENABLED:-}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
