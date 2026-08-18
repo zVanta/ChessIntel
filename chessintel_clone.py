@@ -272,12 +272,21 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
         except Exception:
             score_before = 0
         best_san = None
+        pv_line = None
+        fen_before = board.fen()
         try:
             pv = info_before.get("pv") if isinstance(info_before, dict) else None
             if pv:
                 best_san = board.san(pv[0])
+                tmp = board.copy()
+                pv_sans = []
+                for m in pv[:4]:
+                    pv_sans.append(tmp.san(m))
+                    tmp.push(m)
+                pv_line = " ".join(pv_sans)
         except Exception:
             best_san = None
+            pv_line = None
         board.push(move)
         try:
             info_after = engine.analyse(board, chess.engine.Limit(depth=depth))
@@ -296,6 +305,8 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
                 "best": best_san,
                 "phase": phase,
                 "cp_loss": cp_loss,
+                "fen": fen_before,
+                "line": pv_line,
             })
             total_cp_lost += cp_loss
 
@@ -510,6 +521,8 @@ def build_report_context(reports: List[Dict[str, Any]], platform: str,
                 "phase": b.get("phase") or "middlegame",
                 "cp_loss": round((b.get("cp_loss") or 0) / 100.0, 1),
                 "opponent": opponent,
+                "fen": b.get("fen"),
+                "line": b.get("line"),
             })
         played = _played_date(r.get("played_at"))
         if played:
@@ -537,28 +550,28 @@ def build_report_context(reports: List[Dict[str, Any]], platform: str,
 
 
 _REPORT_SYSTEM = (
-    "You are the head coach at {site_name} — the chess coach who makes kids "
-    "better AND makes them laugh. You write like a favorite chess streamer "
-    "turned coach: energetic, punchy, specific, and genuinely encouraging. You "
-    "never talk down to kids and you never write generic filler.\n\n"
+    "You are the head coach at {site_name} — a strong, plain-spoken chess coach "
+    "who explains ideas the way a GM would: concrete, positional, and grounded "
+    "in the actual position. You make kids better AND keep it fun, but you never "
+    "write generic encouragement or fill in a form.\n\n"
     "Rules:\n"
-    "- Be concrete: every claim points at a real move from the facts (the move "
-    "they played, the move the engine wanted, the opponent, the cost in pawns).\n"
-    "- Copy every move EXACTLY as given in the facts, including the check (+), "
-    "checkmate (#), capture (x) and castling (O-O / O-O-O) symbols. Never guess, "
-    "add, or change move notation — if a fact says a move was check, do not call "
-    "it mate, and vice versa.\n"
-    "- Every 'Moment' section ends with a bold 'Fix:' line — one check the kid "
-    "can actually run in their next game.\n"
-    "- Every drill has exactly 3 steps that can be done in 15 minutes, plus a "
-    "bold 'Got it when:' line with a measurable check (e.g. '3 in a row').\n"
-    "- Be fun: short punchy sentences, the occasional exclamation, real chess "
-    "slang ('free piece', 'the knight went sightseeing', 'pawn grab'), and real "
-    "hype for what they did well. No filler like 'chess is a game of...'.\n"
+    "- Ground every claim in the facts (played move, engine's preferred move, "
+    "the engine's line, the position FEN, the cost in pawns, the opponent).\n"
+    "- Copy move notation EXACTLY as given (+ / # / x / O-O / O-O-O). Never "
+    "guess, add, or change it.\n"
+    "- Read the FEN: describe the position truthfully — name squares, pawn "
+    "structure, piece coordination, king activity, open files. Explain WHY the "
+    "engine's move is better in concrete chess terms, not just that it is.\n"
+    "- VARY YOUR WRITING: never repeat the same sentence opener, the same "
+    "'Fix:' formula, or the same drill template twice. Every moment should read "
+    "like a different paragraph, not a re-filled form. Vary how you deliver the "
+    "takeaway — sometimes bold, sometimes a sentence, sometimes a question.\n"
+    "- Be energetic and specific: short punchy sentences, occasional "
+    "exclamation, real chess slang. No filler like 'chess is a game of...'.\n"
     "- Write so a kid and their parent can both follow it.\n"
     "- Never invent moves, names, ratings, or dates; stick to the facts given.\n"
     "- Write in Markdown, keep every heading and the '---' rules exactly as "
-    "given, and fill the prose between them. Keep the report under ~700 words."
+    "given, and vary the prose between them. Keep the report under ~700 words."
 ).replace("{site_name}", SITE_NAME)
 
 
@@ -582,12 +595,17 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
         ))
     moments = ctx.get("moments") or []
     if moments:
-        facts.append("Key mistake moments: " + "; ".join(
-            f"{m['san']} at ply {m['ply']} ({m['phase']}, lost ~{m['cp_loss']} pawns)"
-            + (f" — engine preferred {m['best']}" if m.get("best") else "")
-            + f" vs {m['opponent']}"
-            for m in moments
-        ))
+        facts.append("Key mistake moments (position + engine line included):")
+        for m in moments:
+            parts = [f"- {m['san']} at ply {m['ply']} ({m['phase']}, lost ~{m['cp_loss']} pawns)"]
+            if m.get("best"):
+                parts.append(f"engine preferred {m['best']}")
+            if m.get("line"):
+                parts.append(f"engine line: {m['line']}")
+            if m.get("fen"):
+                parts.append(f"position before move (FEN): {m['fen']}")
+            parts.append(f"opponent: {m['opponent']}")
+            facts.append("; ".join(parts))
     if ctx.get("notes"):
         facts.append(f"Parent note: {ctx['notes']}")
     if ctx.get("answers"):
@@ -646,14 +664,15 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
         "",
         "### Moment 1 — <bad move> instead of <better move> (vs <opponent>)",
         "",
-        "(Set the scene in one line, what was played, what the engine wanted, "
-        "and why it hurt — then end with a bold 'Fix:' line: the exact check to "
-        "run next game.)",
+        "(Analyze this exact position like a coach: what was on the board, why "
+        "the played move hurt, why the engine's move was better in concrete "
+        "chess terms, and what to do differently next time. Phrase the takeaway "
+        "naturally — don't reuse a fixed 'Fix:' formula.)",
         "",
         "### Moment 2 — <bad move> instead of <better move> (vs <opponent>)",
         "",
-        "(Same format as Moment 1, from another game in the facts. Skip this "
-        "heading entirely if there is only one moment.)",
+        "(Analyze a different moment from the facts, written differently from "
+        "Moment 1. Skip this heading entirely if there is only one moment.)",
         "",
         "---",
         "",
@@ -668,12 +687,9 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
         "",
         "**<Drill title — make it sound fun>**",
         "",
-        "1. <step one — concrete, tied to their actual moves>",
-        "2. <step two — concrete>",
-        "3. <step three — concrete>",
-        "",
-        "**Got it when:** <measurable check, e.g. '3 in a row' or 'under 10 "
-        "seconds each'>",
+        "(A short, concrete, game-specific drill. Steps are fine, but phrase "
+        "them naturally and tie them to this report's actual moments. Add a way "
+        "to know it worked.)",
         "",
         "---",
         "",
