@@ -89,10 +89,10 @@ function migrate(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_reports_kid ON reports(kid_id);
     CREATE INDEX IF NOT EXISTS idx_games_report ON games(report_id);
     CREATE INDEX IF NOT EXISTS idx_followups_kid ON drill_followups(kid_id);
-    CREATE INDEX IF NOT EXISTS idx_kids_user ON kids(user_id);
   `);
 
-  // Idempotent column additions for older databases.
+  // Idempotent column additions for older databases. Must run BEFORE creating
+  // any index that references the new columns.
   ensureColumn(db, "kids", "user_id", "INTEGER");
   ensureColumn(db, "kids", "age", "TEXT");
   ensureColumn(db, "kids", "uscf_rating", "TEXT");
@@ -101,6 +101,8 @@ function migrate(db: Database.Database): void {
   ensureColumn(db, "kids", "focus_notes", "TEXT");
   ensureColumn(db, "kids", "stripe_customer_id", "TEXT");
   ensureColumn(db, "kids", "subscription_status", "TEXT NOT NULL DEFAULT 'none'");
+
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_kids_user ON kids(user_id);`);
 
   seedAdmin(db);
 }
