@@ -27,7 +27,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Incorrect email or password." }, { status: 401 });
     }
 
-    const res = NextResponse.json({ user: { id: user.id, email: user.email, role: user.role, credits: user.credits } });
+    const res = NextResponse.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        credits: user.credits,
+        subscription_status: user.subscription_status,
+      },
+    });
     res.cookies.set(SESSION_COOKIE, createSessionToken(user.id), sessionCookieOptions());
     return res;
   } catch (err) {

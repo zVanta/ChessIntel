@@ -81,6 +81,16 @@ export async function POST(req: Request) {
       }
       break;
     }
+    case "invoice.payment_failed":
+    case "invoice.payment_action_required": {
+      const invoice = event.data.object as Stripe.Invoice;
+      const customerId = typeof invoice.customer === "string" ? invoice.customer : null;
+      if (customerId) {
+        const user = getUserByStripeCustomer(customerId);
+        if (user) setUserSubscription(user.id, customerId, "past_due");
+      }
+      break;
+    }
     default:
       break;
   }

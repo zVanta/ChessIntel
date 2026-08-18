@@ -8,6 +8,7 @@ interface PublicUser {
   email: string;
   role: string;
   credits: number;
+  subscription_status: string;
 }
 
 const EMPTY_KID = {
@@ -160,6 +161,62 @@ export default function ProfileView() {
     }
   }
 
+  async function manageBilling() {
+    setFunding(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/billing/portal", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not open billing portal.");
+      if (data.url) window.location.href = data.url;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not open billing portal.");
+      setFunding(false);
+    }
+  }
+
+  async function exportData() {
+    setFunding(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/export", { cache: "no-store" });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Export failed.");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "checkmate-coach-data.json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Export failed.");
+    } finally {
+      setFunding(false);
+    }
+  }
+
+  async function deleteAccount() {
+    if (!confirm("Delete your account and ALL child data? This cannot be undone.")) return;
+    setFunding(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/auth/me", { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Delete failed.");
+      }
+      window.location.href = "/";
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed.");
+      setFunding(false);
+    }
+  }
+
   if (loading) return <p className="text-slate-500">Loading…</p>;
 
   return (
@@ -187,6 +244,33 @@ export default function ProfileView() {
                 {funding ? "Opening…" : "Fund credits — $20/mo"}
               </button>
             )}
+            {user?.subscription_status && user.subscription_status !== "none" && (
+              <button
+                onClick={manageBilling}
+                disabled={funding}
+                className="mt-2 ml-2 rounded-md bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+              >
+                Manage billing
+              </button>
+            )}
+            <div className="mt-3 flex items-center justify-end gap-2 border-t border-slate-100 pt-2">
+              <button
+                onClick={exportData}
+                disabled={funding}
+                className="text-xs text-slate-500 underline hover:text-slate-700"
+              >
+                Download my data
+              </button>
+              {user?.role !== "admin" && (
+                <button
+                  onClick={deleteAccount}
+                  disabled={funding}
+                  className="text-xs text-red-500 underline hover:text-red-700"
+                >
+                  Delete account
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>

@@ -431,6 +431,25 @@ export function getGame(id: number): GameWithReport | undefined {
     .get(id) as GameWithReport | undefined;
 }
 
+export function getGamesForReport(reportId: number): GameRow[] {
+  return getDb()
+    .prepare(`SELECT * FROM games WHERE report_id = ?`)
+    .all(reportId) as GameRow[];
+}
+
+/** True when a game with this source + external id is already stored for the kid. */
+export function gameExistsForKid(kidId: number, source: string, externalId: string): boolean {
+  const row = getDb()
+    .prepare(
+      `SELECT 1 AS x FROM games g
+       JOIN reports r ON r.id = g.report_id
+       WHERE r.kid_id = ? AND g.source = ? AND g.external_id = ?
+       LIMIT 1`
+    )
+    .get(kidId, source, externalId);
+  return Boolean(row);
+}
+
 // ---------------------------------------------------------------------------
 // Drill follow-ups ("memory" loop)
 // ---------------------------------------------------------------------------

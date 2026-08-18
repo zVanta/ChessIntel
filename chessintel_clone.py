@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import math
 import os
 import sys
 from datetime import datetime, timedelta, timezone
@@ -107,6 +108,38 @@ def _score_to_cp(score: Any, color: chess.Color) -> int:
     return cp if color == chess.WHITE else -cp
 
 
+# ---------------------------------------------------------------------------
+# Move classification (winning-chances based)
+#
+# Thresholds and labels follow the Chesskit colour scheme as adopted by
+# Macintosh-Fan/ChessIntelligence (MIT). A move's "advantage loss" is measured
+# in winning-percentage points and bucketed into blunder / mistake / inaccuracy
+# / okay / excellent / best. "Brilliant" and "perfect" require move-type
+# detection and are intentionally omitted.
+# ---------------------------------------------------------------------------
+
+_CLASS_THRESHOLDS = [
+    ("blunder", 20.0),
+    ("mistake", 10.0),
+    ("inaccuracy", 5.0),
+    ("okay", 2.0),
+    ("excellent", 0.0),
+]
+
+
+def _winning_chances(cp: float) -> float:
+    """Map a centipawn score to a winning percentage (0–100)."""
+    return 50.0 + 50.0 * (2.0 / (1.0 + math.exp(-0.00368208 * float(cp))) - 1.0)
+
+
+def _classify_loss(loss_pct: float) -> str:
+    """Classify an advantage loss (in win-% points) into a move-quality label."""
+    for label, floor in _CLASS_THRESHOLDS:
+        if loss_pct > floor:
+            return label
+    return "best"
+
+
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -123,7 +156,7 @@ def fetch_lichess_games(username: str, max_games: int = 50, since_days: int = 30
     """
     since_ms = int((_now_utc() - timedelta(days=since_days)).timestamp() * 1000)
     url = LICHESS_GAMES_URL.format(username=username)
-    params = {"max": max_games, "since": since_ms, "pgnInJson": "true"}
+    params = {"max": max_games, "since": since_ms, "pgnInJson": "true", "opening": "true"}
     resp = requests.get(
         url,
         params=params,
@@ -142,6 +175,7 @@ def fetch_lichess_games(username: str, max_games: int = 50, since_days: int = 30
         if not pgn:
             continue
         players = data.get("players", {}) or {}
+        opening = data.get("opening") or {}
         games.append({
             "source": "lichess",
             "external_id": str(data.get("id") or ""),
@@ -150,6 +184,7 @@ def fetch_lichess_games(username: str, max_games: int = 50, since_days: int = 30
             "black": (players.get("black") or {}).get("user", {}).get("name", "Black"),
             "result": _lichess_result(data),
             "played_at": data.get("createdAt"),
+            "opening": (opening.get("name") or "").strip() or None,
         })
         if len(games) >= max_games:
             break
@@ -210,8 +245,25 @@ def fetch_chesscom_games(username: str, max_games: int = 50, since_days: int = 3
                 "black": (g.get("black") or {}).get("username", "Black"),
                 "result": _chesscom_result(g),
                 "played_at": end_time,
+                "opening": _chesscom_opening(g.get("eco")),
             })
     return games[:max_games]
+
+
+def _chesscom_opening(eco_url: Any) -> Optional[str]:
+    """Extract a human opening name from a chess.com ``eco`` URL slug."""
+    if not eco_url or not isinstance(eco_url, str):
+        return None
+    slug = eco_url.rstrip("/").rsplit("/", 1)[-1]
+    words: List[str] = []
+    for part in slug.split("-"):
+        # The move sequence begins at the first token starting with a digit.
+        if part and part[0].isdigit():
+            break
+        if part:
+            words.append(part)
+    name = " ".join(words).strip()
+    return name or None
 
 
 def _chesscom_result(g: Dict[str, Any]) -> str:
@@ -247,10 +299,15 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
         "black": (game or {}).get("black"),
         "result": (game or {}).get("result"),
         "played_at": (game or {}).get("played_at"),
+        "opening": (game or {}).get("opening"),
         "pgn": pgn,
         "blunders": [],
         "phase_blunders": {"opening": 0, "middlegame": 0, "endgame": 0},
         "points_lost": 0.0,
+        "moves": 0,
+        "acpl": 0,
+        "evals": [],
+        "class_counts": {},
         "habit_tags": [],
     }
     if node is None:
@@ -259,6 +316,10 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
     board = chess.Board()
     blunders: List[Dict[str, Any]] = []
     total_cp_lost = 0
+    total_cp_lost_all = 0
+    total_moves = 0
+    evals: List[List[int]] = []
+    class_counts: Dict[str, int] = {}
 
     for ply, move in enumerate(node.mainline_moves(), start=1):
         mover = board.turn
@@ -295,6 +356,12 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
             score_after = score_before
 
         cp_loss = score_before - score_after
+        total_moves += 1
+        total_cp_lost_all += max(0, cp_loss)
+        evals.append([ply, score_after])
+        loss_pct = max(0.0, _winning_chances(score_before) - _winning_chances(score_after))
+        class_label = _classify_loss(loss_pct)
+        class_counts[class_label] = class_counts.get(class_label, 0) + 1
         if cp_loss >= BLUNDER_THRESHOLD_CP:
             phase = phase_of(ply)
             # NOTE: board.san(move) already includes the correct check (+) /
@@ -305,6 +372,8 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
                 "best": best_san,
                 "phase": phase,
                 "cp_loss": cp_loss,
+                "loss_pct": round(loss_pct, 1),
+                "class": class_label,
                 "fen": fen_before,
                 "line": pv_line,
             })
@@ -321,10 +390,15 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
         "black": (game or {}).get("black"),
         "result": (game or {}).get("result"),
         "played_at": (game or {}).get("played_at"),
+        "opening": (game or {}).get("opening"),
         "pgn": pgn,
         "blunders": blunders,
         "phase_blunders": phase_blunders,
         "points_lost": round(total_cp_lost / 100.0, 2),
+        "moves": total_moves,
+        "acpl": round(total_cp_lost_all / max(1, total_moves)),
+        "evals": evals,
+        "class_counts": class_counts,
         "habit_tags": _tag_blunders(blunders),
     }
 
@@ -429,6 +503,10 @@ SITE_NAME: str = os.environ.get("SITE_NAME", "Checkmate Coach")
 SITE_URL: str = os.environ.get("SITE_URL", "chess.njxai.com")
 SITE_CONTACT: str = os.environ.get("SITE_CONTACT", "info@checkmatecoach.app")
 
+_REPORT_DISCLOSURE = (
+    "*Positions analyzed by Stockfish · coaching notes written by an AI assistant.*"
+)
+
 
 def _played_date(played_at: Any) -> Optional[datetime]:
     """Normalise an epoch (ms) or ISO timestamp to a timezone-aware datetime."""
@@ -512,6 +590,9 @@ def build_report_context(reports: List[Dict[str, Any]], platform: str,
             "opponent": opponent,
             "outcome": outcome,
             "result": r.get("result") or "*",
+            "opening": r.get("opening") or "",
+            "points_lost": r.get("points_lost") or 0.0,
+            "acpl": r.get("acpl") or 0,
         })
         for b in sorted(r.get("blunders") or [], key=lambda b: -(b.get("cp_loss") or 0))[:2]:
             moments.append({
@@ -529,6 +610,13 @@ def build_report_context(reports: List[Dict[str, Any]], platform: str,
             dates.append(played)
 
     moments = sorted(moments, key=lambda m: -m["cp_loss"])[:4]
+    acpl_values = [g["acpl"] for g in games_brief if g.get("acpl")]
+    avg_acpl = round(sum(acpl_values) / len(acpl_values)) if acpl_values else 0
+    openings = sorted({g["opening"] for g in games_brief if g.get("opening")})
+    class_counts: Dict[str, int] = {}
+    for r in reports:
+        for label, count in (r.get("class_counts") or {}).items():
+            class_counts[label] = class_counts.get(label, 0) + int(count)
     platform_label = {
         "chesscom": "Chess.com",
         "lichess": "Lichess",
@@ -542,6 +630,9 @@ def build_report_context(reports: List[Dict[str, Any]], platform: str,
         "draws": draws,
         "date_range": _date_range(dates),
         "habit": habit,
+        "acpl": avg_acpl,
+        "openings": openings,
+        "class_counts": class_counts,
         "games_brief": games_brief,
         "moments": moments,
         "notes": (notes or "").strip(),
@@ -584,13 +675,25 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
         f"Date range: {ctx.get('date_range')}",
         f"Results: {ctx.get('wins')} wins, {ctx.get('losses')} losses, "
         f"{ctx.get('draws')} draws",
+        f"Average centipawn loss per move (ACPL): {ctx.get('acpl')}",
         f"Recurring habit: {habit}",
         f"Suggested drill: {drill}",
     ]
+    openings = ctx.get("openings") or []
+    if openings:
+        facts.append("Openings played: " + ", ".join(openings[:6]))
+    class_counts = ctx.get("class_counts") or {}
+    if class_counts:
+        order = ["blunder", "mistake", "inaccuracy", "okay", "excellent", "best"]
+        summary = ", ".join(
+            f"{label}s: {class_counts.get(label, 0)}" for label in order if class_counts.get(label)
+        )
+        facts.append("Move quality across the set: " + summary)
     brief = ctx.get("games_brief") or []
     if brief:
         facts.append("Games: " + "; ".join(
             f"vs {g['opponent']} ({g['outcome']}, {g['result']})"
+            + (f", {g['opening']}" if g.get("opening") else "")
             for g in brief[:12]
         ))
     moments = ctx.get("moments") or []
@@ -703,6 +806,8 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
         "",
         "Questions? Email [" + SITE_CONTACT + "](mailto:" + SITE_CONTACT + ")",
         "— The " + SITE_NAME + " team",
+        "",
+        _REPORT_DISCLOSURE,
         "",
         "---",
         "",
@@ -894,6 +999,7 @@ def _build_markdown_report(kid_name: str, habit: str, game_count: int,
             f"Questions? Email [{SITE_CONTACT}](mailto:{SITE_CONTACT})  \n"
             f"— The {SITE_NAME} team"
         ),
+        _REPORT_DISCLOSURE,
         (
             "*One more thing: online games show habits, but tournament games are where "
             "they cost points. Photograph a scoresheet or paste a PGN on the Analyze "

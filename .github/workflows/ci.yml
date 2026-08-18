@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install JS deps
+        run: npm ci
+
+      - name: Install Python deps
+        run: pip install -r requirements.txt
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: JS tests
+        run: npm test
+
+      - name: Python tests
+        run: python -m pytest -q

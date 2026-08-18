@@ -1,4 +1,4 @@
-import { createDrillFollowup, createGame, createReport, getLatestReportForKid } from "./db";
+import { createDrillFollowup, createGame, createReport, gameExistsForKid, getLatestReportForKid } from "./db";
 import type { AnalysisResult, DrillFollowup, GameRow, Report } from "./types";
 
 export interface PersistedAnalysis {
@@ -27,9 +27,14 @@ export function persistAnalysis(kidId: number, result: AnalysisResult): Persiste
     JSON.stringify(result)
   );
 
-  const games = (result.games || []).map((g) =>
-    createGame(report.id, g.source || "unknown", g.external_id || null, g.pgn || "")
-  );
+  const games = (result.games || [])
+    .filter(
+      (g) =>
+        !(g.external_id && gameExistsForKid(kidId, g.source || "unknown", g.external_id))
+    )
+    .map((g) =>
+      createGame(report.id, g.source || "unknown", g.external_id || null, g.pgn || "")
+    );
 
   let followup: DrillFollowup | null = null;
   if (prior && prior.recurring_habit === result.habit) {
