@@ -279,6 +279,16 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
         except Exception:
             best_san = None
         board.push(move)
+        # Compute the correct check/mate annotation so the report can quote
+        # the move with accurate notation (never "Nd5#" when it was only check).
+        annotation = ""
+        try:
+            if board.is_checkmate():
+                annotation = "#"
+            elif board.is_check():
+                annotation = "+"
+        except Exception:
+            annotation = ""
         try:
             info_after = engine.analyse(board, chess.engine.Limit(depth=depth))
             score_after = _score_to_cp(info_after["score"], mover)
@@ -290,7 +300,7 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
             phase = phase_of(ply)
             blunders.append({
                 "ply": ply,
-                "san": san,
+                "san": san + annotation,
                 "best": best_san,
                 "phase": phase,
                 "cp_loss": cp_loss,
@@ -542,6 +552,10 @@ _REPORT_SYSTEM = (
     "Rules:\n"
     "- Be concrete: every claim points at a real move from the facts (the move "
     "they played, the move the engine wanted, the opponent, the cost in pawns).\n"
+    "- Copy every move EXACTLY as given in the facts, including the check (+), "
+    "checkmate (#), capture (x) and castling (O-O / O-O-O) symbols. Never guess, "
+    "add, or change move notation — if a fact says a move was check, do not call "
+    "it mate, and vice versa.\n"
     "- Every 'Moment' section ends with a bold 'Fix:' line — one check the kid "
     "can actually run in their next game.\n"
     "- Every drill has exactly 3 steps that can be done in 15 minutes, plus a "
@@ -906,6 +920,7 @@ def generate_report(kid_name: str, habit: str, game_count: int,
         text = llm.complete(
             _REPORT_SYSTEM,
             _report_user_prompt(kid_name, habit, game_count, drill, ctx),
+            temperature=0.4,
             api_key=api_key,
         )
         cleaned = (text or "").strip()
