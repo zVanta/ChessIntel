@@ -148,7 +148,15 @@ export async function runAnalysis(
       // Re-raise deliberate service errors (e.g. bad input) rather than falling back.
       throw err;
     }
-    // Network-level failure (service down) -> try the CLI.
+    // The CLI fallback is for local development only, where Python and its
+    // dependencies (python-chess, Stockfish) are installed on the host. The
+    // Docker web image has no Python chess stack, so in production surface the
+    // real error instead of a confusing "No module named 'chess'".
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        `Python service is unreachable: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
     return analyzeWithCli(payload.platform, payload.username, payload.kid_name, payload.max_games);
   }
 }
