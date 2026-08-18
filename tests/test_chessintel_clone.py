@@ -168,6 +168,18 @@ def test_analyze_game_handles_unparseable_pgn():
     assert report["points_lost"] == 0.0
 
 
+def test_analyze_game_san_never_double_annotates_checkmate():
+    # Scholar's mate ends with Qxf7# — board.san() already adds the '#', so the
+    # report must not append another one (regression for "Qxf7##").
+    pgn = '[Event "T"]\n[White "A"]\n[Black "B"]\n\n1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# *'
+    report = cc.analyze_game({"pgn": pgn, "source": "x", "external_id": "1"}, FakeEngine(), depth=1)
+    sans = [b["san"] for b in report["blunders"]]
+    assert any(s.endswith("#") for s in sans)
+    for s in sans:
+        assert "##" not in s
+        assert "++" not in s
+
+
 # ---------------------------------------------------------------------------
 # generate_report fallback (no API key)
 # ---------------------------------------------------------------------------

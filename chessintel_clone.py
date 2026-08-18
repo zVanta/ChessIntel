@@ -279,16 +279,6 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
         except Exception:
             best_san = None
         board.push(move)
-        # Compute the correct check/mate annotation so the report can quote
-        # the move with accurate notation (never "Nd5#" when it was only check).
-        annotation = ""
-        try:
-            if board.is_checkmate():
-                annotation = "#"
-            elif board.is_check():
-                annotation = "+"
-        except Exception:
-            annotation = ""
         try:
             info_after = engine.analyse(board, chess.engine.Limit(depth=depth))
             score_after = _score_to_cp(info_after["score"], mover)
@@ -298,9 +288,11 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
         cp_loss = score_before - score_after
         if cp_loss >= BLUNDER_THRESHOLD_CP:
             phase = phase_of(ply)
+            # NOTE: board.san(move) already includes the correct check (+) /
+            # checkmate (#) annotation, so never append another one.
             blunders.append({
                 "ply": ply,
-                "san": san + annotation,
+                "san": san,
                 "best": best_san,
                 "phase": phase,
                 "cp_loss": cp_loss,
