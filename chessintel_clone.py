@@ -2,18 +2,13 @@
 
 This module fetches recent games from Lichess or chess.com, runs a Stockfish
 engine analysis on each game, aggregates recurring mistakes ("habits"), and
-produces a coach-style report (optionally via an OpenAI-compatible LLM).
+produces a coach-style report (optionally via DeepSeek or LibreChat).
 
 Environment variables
 ---------------------
 STOCKFISH_PATH  : path to the Stockfish binary (default: "stockfish")
-OPENAI_API_KEY  : optional, enables LLM-generated report summaries
-LLM_MODEL       : LLM model name (default: "gpt-4o-mini")
-LLM_BASE_URL    : OpenAI-compatible base URL ending in /v1
-                  (default: "https://api.openai.com/v1"; set to your
-                  LibreChat endpoint, e.g. "http://localhost:3080/v1")
-LLM_ENDPOINT    : optional full endpoint URL. When set, it overrides
-                  LLM_BASE_URL. Supports /chat/completions and /responses.
+AI_PROVIDER     : "deepseek" (default) or "librechat". See llm.py for the
+                  DEEPSEEK_* and LIBRECHAT_* connection variables.
 
 CLI
 ---
@@ -34,6 +29,7 @@ from typing import Any, Dict, Iterable, List, Optional
 import chess
 import chess.engine
 import chess.pgn
+import llm
 import requests
 
 
@@ -63,10 +59,6 @@ for _env_candidate in (".env", os.path.join(os.path.dirname(__file__), ".env")):
 
 
 STOCKFISH_PATH: str = os.environ.get("STOCKFISH_PATH", "stockfish")
-OPENAI_API_KEY: Optional[str] = os.environ.get("OPENAI_API_KEY")
-LLM_MODEL: str = os.environ.get("LLM_MODEL", "gpt-4o-mini")
-LLM_BASE_URL: str = os.environ.get("LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
-LLM_ENDPOINT: Optional[str] = os.environ.get("LLM_ENDPOINT")
 
 # chess.com requires a descriptive User-Agent; the requests default is 403'd.
 USER_AGENT: str = "CheckmateCoach/1.0 (https://github.com/zVanta/ChessIntel)"
@@ -383,80 +375,12 @@ _DEFAULT_DRILL = (
 )
 
 
-def _llm_endpoint() -> str:
-    """Return the LLM endpoint URL, preferring an explicit LLM_ENDPOINT."""
-    explicit = os.environ.get("LLM_ENDPOINT")
-    if explicit:
-        return explicit
-    return f"{LLM_BASE_URL}/chat/completions"
-
-
-def _parse_responses(data: Dict[str, Any]) -> str:
-    """Extract text from an OpenAI Responses-API-style payload."""
-    for item in data.get("output", []) or []:
-        if not isinstance(item, dict):
-            continue
-        # Standard shape: {"type": "message", "content": [{"type": "output_text", "text": ...}]}
-        for part in item.get("content", []) or []:
-            text = part.get("text") if isinstance(part, dict) else None
-            if text:
-                return str(text).strip()
-        # Some servers return the text directly on the output item.
-        text = item.get("text")
-        if isinstance(text, str) and text.strip():
-            return text.strip()
-    for key in ("output_text", "text", "response", "content"):
-        value = data.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-    choices = data.get("choices") or []
-    if choices:
-        message = choices[0].get("message", {}) or {}
-        text = message.get("content", "")
-        if isinstance(text, str) and text.strip():
-            return text.strip()
-    raise ValueError("Unrecognized LLM response shape")
-
-
-def _call_llm(system: str, user: str, key: str) -> str:
-    """Call an OpenAI-compatible endpoint (chat completions or responses)."""
-    endpoint = _llm_endpoint()
-    is_responses = endpoint.rstrip("/").endswith("/responses")
-    headers = {"Authorization": f"Bearer {key}"}
-
-    if is_responses:
-        payload: Dict[str, Any] = {
-            "input": f"{system}\n\n{user}",
-            "stream": False,
-            "max_output_tokens": 2000,
-            "temperature": 0.7,
-        }
-        if LLM_MODEL:
-            payload["model"] = LLM_MODEL
-    else:
-        payload = {
-            "model": LLM_MODEL,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            "temperature": 0.7,
-        }
-
-    resp = requests.post(endpoint, headers=headers, json=payload, timeout=30)
-    resp.raise_for_status()
-    data = resp.json()
-    if is_responses:
-        return _parse_responses(data)
-    return data["choices"][0]["message"]["content"].strip()
-
-
 def generate_report(kid_name: str, habit: str, game_count: int,
                     api_key: Optional[str] = None) -> str:
     """Generate a coach-style summary for a kid.
 
-    Uses an OpenAI-compatible chat completion when ``api_key`` is provided;
-    otherwise returns a deterministic fallback summary (no network needed).
+    Uses the configured LLM provider (DeepSeek by default, or LibreChat — see
+    llm.py); otherwise returns a deterministic fallback summary.
     """
     drill = _DRILLS.get(habit, _DEFAULT_DRILL)
     fallback = (
@@ -465,20 +389,16 @@ def generate_report(kid_name: str, habit: str, game_count: int,
         f"{drill}"
     )
 
-    key = api_key or OPENAI_API_KEY
-    if not key:
-        return fallback
-
     try:
-        text = _call_llm(
+        text = llm.complete(
             "You write encouraging, specific coach reports for the parents "
             "of junior chess players. Keep it warm, concrete and under 120 words.",
             f"Kid: {kid_name}. Games reviewed: {game_count}. "
             f"Most recurring habit: {habit}. Suggested drill: {drill}. "
             f"Write a short parent-facing report.",
-            key,
+            api_key=api_key,
         )
-        return text
+        return text or fallback
     except Exception:
         return fallback
 

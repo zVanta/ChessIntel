@@ -173,7 +173,9 @@ def test_analyze_game_handles_unparseable_pgn():
 # ---------------------------------------------------------------------------
 
 def test_generate_report_fallback_without_key(monkeypatch):
-    monkeypatch.setattr(cc, "OPENAI_API_KEY", None)
+    import llm
+    monkeypatch.setattr(llm, "DEEPSEEK_API_KEY", None)
+    monkeypatch.setattr(llm, "LIBRECHAT_API_KEY", None)
     text = cc.generate_report("Alex", "Piece safety", 3, api_key=None)
     assert "Alex" in text
     assert "Piece safety" in text

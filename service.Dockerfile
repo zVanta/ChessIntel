@@ -31,7 +31,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # The two pipeline modules live at the repo root; main.py prepends the parent
 # directory to sys.path, so keep this layout.
 COPY service/main.py service/main.py
-COPY chessintel_clone.py scoresheet_ocr.py chess_agent.py ./
+COPY chessintel_clone.py scoresheet_ocr.py chess_agent.py llm.py ./
 
 ENV STOCKFISH_PATH=stockfish
 

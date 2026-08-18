@@ -2,13 +2,13 @@
 
 Turns a photograph of a handwritten chess scoresheet into a PGN string using
 OpenCV preprocessing + Tesseract OCR + a python-chess legality replay. If an
-``OPENAI_API_KEY`` is available, illegible/illegal move cells are repaired via
-an OpenAI-compatible chat completion.
+LLM API key is configured (DeepSeek or LibreChat — see llm.py), illegible or
+illegal move cells are repaired via the configured provider.
 
 Environment variables
 ---------------------
-OPENAI_API_KEY  : optional, enables LLM-based repair of illegal moves
-LLM_MODEL       : LLM model name (default: "gpt-4o-mini")
+AI_PROVIDER     : "deepseek" (default) or "librechat". See llm.py for the
+                  DEEPSEEK_* and LIBRECHAT_* connection variables.
 
 Heavy dependencies (opencv-python-headless, numpy, pytesseract) are imported
 lazily so the module can be imported and unit-tested without them.
@@ -20,10 +20,8 @@ import os
 import sys
 from typing import Any, List, Optional, Sequence, Tuple
 
+import llm
 import requests
-
-OPENAI_API_KEY: Optional[str] = os.environ.get("OPENAI_API_KEY")
-LLM_MODEL: str = os.environ.get("LLM_MODEL", "gpt-4o-mini")
 
 # Guarded import so the module imports cleanly when pytesseract is not present.
 try:
@@ -162,36 +160,13 @@ def _replay_validate(turns: Sequence[Sequence[str]]) -> Tuple[str, List[int]]:
 
 def _llm_repair(pgn: str, illegal_numbers: Sequence[int]) -> str:
     """Best-effort LLM repair of a PGN with flagged illegal moves."""
-    key = OPENAI_API_KEY
-    if not key:
-        return pgn
     try:
-        resp = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {key}"},
-            json={
-                "model": LLM_MODEL,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You repair chess PGN transcripts. Fix the flagged illegal moves, "
-                            "keeping legal moves unchanged. Return only the PGN text."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": (
-                            f"PGN:\n{pgn}\n\nFlagged move numbers: {list(illegal_numbers)}"
-                        ),
-                    },
-                ],
-                "temperature": 0.0,
-            },
-            timeout=30,
+        repaired = llm.complete(
+            "You repair chess PGN transcripts. Fix the flagged illegal moves, "
+            "keeping legal moves unchanged. Return only the PGN text.",
+            f"PGN:\n{pgn}\n\nFlagged move numbers: {list(illegal_numbers)}",
+            temperature=0.0,
         )
-        resp.raise_for_status()
-        repaired = resp.json()["choices"][0]["message"]["content"].strip()
         return repaired or pgn
     except Exception:
         return pgn
@@ -215,7 +190,7 @@ def scoresheet_to_pgn(image: Any, kid_name: Optional[str] = None) -> str:
         if white or black:
             turns.append((white, black))
     pgn, illegal = _replay_validate(turns)
-    if illegal and OPENAI_API_KEY:
+    if illegal:
         pgn = _llm_repair(pgn, illegal)
     return pgn
 

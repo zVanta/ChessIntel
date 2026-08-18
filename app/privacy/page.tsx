@@ -29,10 +29,10 @@ export default function PrivacyPage() {
         <section>
           <h2 className="text-lg font-semibold text-slate-900">Storage & payments</h2>
           <p className="mt-2">
-            Data is stored in a local SQLite database. If an OpenAI-compatible API
-            key is configured, report summaries may be sent to that provider; leave
-            it empty to use deterministic summaries instead. Billing is handled by
-            Stripe and belongs to the parent or guardian.
+            Data is stored in a local SQLite database. If a DeepSeek or LibreChat
+            API key is configured, report summaries may be sent to that provider;
+            leave it empty to use deterministic summaries instead. Billing is
+            handled by Stripe and belongs to the parent or guardian.
           </p>
         </section>
 
