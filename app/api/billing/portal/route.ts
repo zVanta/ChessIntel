@@ -16,7 +16,9 @@ export async function POST() {
     return NextResponse.json({ error: "No billing account yet." }, { status: 400 });
   }
 
-  const origin = new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").origin;
+  const origin = new URL(
+    process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"
+  ).origin;
 
   try {
     const session = await getStripe().billingPortal.sessions.create({
