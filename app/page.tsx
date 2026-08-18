@@ -59,7 +59,7 @@ export default function LandingPage() {
         <div className="rounded-2xl border border-emerald-200 bg-white p-8 text-center shadow-sm">
           <h2 className="text-xl font-bold text-slate-900">Simple pricing</h2>
           <p className="mt-2 text-5xl font-extrabold text-slate-900">
-            $15<span className="text-lg font-medium text-slate-500">/month</span>
+            $20<span className="text-lg font-medium text-slate-500">/month</span>
           </p>
           <ul className="mt-4 space-y-2 text-sm text-slate-600">
             <li>✓ First report free — no card required</li>

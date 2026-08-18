@@ -105,7 +105,7 @@ https://chess.njxai.com/.well-known/assetlinks.json
 
 ## Notes
 
-- **Billing:** Play policy requires Google Play Billing for the $15/mo
+- **Billing:** Play policy requires Google Play Billing for the $20/mo
   subscription sold inside the Play app. Keep Stripe for the web/PWA and add
   Play Billing (or a web-first signup flow) before a Play Store launch.
 - Regenerate icons anytime with:
