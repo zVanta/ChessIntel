@@ -65,7 +65,7 @@ export default function LandingPage() {
             <li>✓ First report free — no card required</li>
             <li>✓ New coach report every month</li>
             <li>✓ Drill tracking across games</li>
-            <li>✓ No auto-renew — you re-up only when you want</li>
+            <li>✓ Auto-renews monthly — cancel anytime</li>
           </ul>
           <Link
             href="/onboard"
