@@ -114,7 +114,7 @@ function seedAdmin(db: Database.Database): void {
   if (existing) return;
 
   const email = process.env.ADMIN_EMAIL || "admin@checkmatecoach.app";
-  const password = process.env.ADMIN_PASSWORD || "admin1234";
+  const password = process.env.ADMIN_PASSWORD || "4fc4c8604a6348b7aa84d0285f3920e3";
   const hash = hashPassword(password);
   const info = db
     .prepare(`INSERT INTO users (email, password_hash, role, credits) VALUES (?, ?, 'admin', 999999)`)
