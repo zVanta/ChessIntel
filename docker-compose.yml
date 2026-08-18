@@ -6,10 +6,13 @@ services:
       dockerfile: service.Dockerfile
     environment:
       STOCKFISH_PATH: /usr/games/stockfish
+      CHESS_AGENT_MCP_URL: ${CHESS_AGENT_MCP_URL:-http://host.docker.internal:8080/mcp}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
       LLM_ENDPOINT: ${LLM_ENDPOINT:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
   # Next.js web app — the only service exposed to the internet.

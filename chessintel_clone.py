@@ -487,6 +487,51 @@ def generate_report(kid_name: str, habit: str, game_count: int,
 # Pipeline orchestration
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# ChessAgent MCP integration (best-effort)
+# ---------------------------------------------------------------------------
+
+def _mcp_game_to_internal(game: Dict[str, Any]) -> Dict[str, Any]:
+    white = game.get("white") or {}
+    black = game.get("black") or {}
+    return {
+        "source": game.get("platform") or "unknown",
+        "external_id": str(game.get("id") or game.get("url") or ""),
+        "pgn": game.get("pgn") or "",
+        "white": white.get("username", "White") if isinstance(white, dict) else "White",
+        "black": black.get("username", "Black") if isinstance(black, dict) else "Black",
+        "result": game.get("result", "*"),
+        "played_at": game.get("utc_date") or game.get("end_time"),
+    }
+
+
+def _try_mcp_fetch(username: str, platform: str, max_games: int) -> Optional[List[Dict[str, Any]]]:
+    """Fetch games via ChessAgent MCP; return None so callers can fall back."""
+    try:
+        import chess_agent  # type: ignore
+
+        games = chess_agent.fetch_user_games(username, platform, max_games=max_games)
+        mapped = [
+            _mcp_game_to_internal(g)
+            for g in games
+            if isinstance(g, dict) and (g.get("pgn") or "").strip()
+        ]
+        if mapped:
+            return mapped
+    except Exception:
+        pass
+    return None
+
+
+def _try_mcp_player(username: str) -> Optional[Dict[str, Any]]:
+    try:
+        import chess_agent  # type: ignore
+
+        return chess_agent.player_lookup(username)
+    except Exception:
+        return None
+
+
 def _open_engine(path: str = STOCKFISH_PATH) -> chess.engine.SimpleEngine:
     return chess.engine.SimpleEngine.popen_uci(path)
 
@@ -500,7 +545,11 @@ def run_analysis(platform: str, username: str, kid_name: str = "Player",
     total points lost and a per-game analysis list, ready to be persisted by
     the web app.
     """
-    if platform == "lichess":
+    mcp_used = False
+    games = _try_mcp_fetch(username, platform, max_games)
+    if games:
+        mcp_used = True
+    elif platform == "lichess":
         games = fetch_lichess_games(username, max_games=max_games, since_days=since_days)
     elif platform == "chesscom":
         games = fetch_chesscom_games(username, max_games=max_games, since_days=since_days)
@@ -510,8 +559,14 @@ def run_analysis(platform: str, username: str, kid_name: str = "Player",
     owns_engine = engine is None
     if owns_engine:
         engine = _open_engine()
+    reports: List[Dict[str, Any]] = []
     try:
-        reports = [analyze_game(g, engine, ANALYSIS_DEPTH) for g in games]
+        for g in games:
+            try:
+                reports.append(analyze_game(g, engine, ANALYSIS_DEPTH))
+            except Exception:
+                # One unanalysable game should not fail the whole report.
+                continue
     finally:
         if owns_engine and engine is not None:
             try:
@@ -524,7 +579,7 @@ def run_analysis(platform: str, username: str, kid_name: str = "Player",
     points_lost = round(sum(r.get("points_lost", 0.0) for r in reports), 2)
     summary = generate_report(kid_name, top_habit, len(reports))
 
-    return {
+    result: Dict[str, Any] = {
         "kid_name": kid_name,
         "platform": platform,
         "username": username,
@@ -534,7 +589,15 @@ def run_analysis(platform: str, username: str, kid_name: str = "Player",
         "drill": _DRILLS.get(top_habit, _DEFAULT_DRILL),
         "points_lost": points_lost,
         "games": reports,
+        "mcp_used": mcp_used,
     }
+
+    # Best-effort enrichment from ChessAgent (player profile + ratings).
+    player = _try_mcp_player(username)
+    if player:
+        result["player"] = player
+
+    return result
 
 
 # ---------------------------------------------------------------------------
