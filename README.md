@@ -112,7 +112,7 @@ by the client.
 | Game fetch | ChessAgent MCP server (optional; falls back to local fetch) |
 | Auth | scrypt password hashing, HMAC-SHA256 session cookies, rate limiting |
 | Billing | Stripe (optional; `BILLING_ENABLED`) |
-| Deploy | Docker Compose (web + service + cloudflared), Cloudflare Tunnel |
+| Deploy | Docker Compose (web + service) + native Cloudflare Tunnel |
 | Mobile | PWA + Android TWA (Bubblewrap) |
 
 ---
@@ -182,10 +182,11 @@ the Stripe dashboard and set `STRIPE_PRICE_ID`, `STRIPE_SECRET_KEY`, and
 
 ## Deployment
 
-Production runs as three Docker Compose services — the Next.js web app (the only
-public entrypoint), the internal FastAPI service, and a Cloudflare Tunnel that
-provides DNS + TLS with no inbound ports. See `DEPLOY.md` for the full guide and
-`ANDROID.md` for building the Android APK.
+Production runs two Docker Compose services — the Next.js web app (the only
+public entrypoint) and the internal FastAPI service. HTTPS/DNS come from a
+Cloudflare Tunnel that runs natively on the host (systemd `cloudflared`), not in
+Docker. See `DEPLOY.md` for the full guide and `ANDROID.md` for building the
+Android APK.
 
 ```bash
 docker compose up -d --build

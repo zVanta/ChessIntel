@@ -1,8 +1,9 @@
 # Deploying to a Debian server (Docker)
 
 Target: the app is served at `https://chess.njxai.com` (HTTPS via Cloudflare
-Tunnel). The stack has the Next.js web app, the Python analysis/OCR service,
-and a Cloudflare Tunnel connector, plus a persisted SQLite volume.
+Tunnel). The Docker stack has the Next.js web app and the Python analysis/OCR
+service, plus a persisted SQLite volume. The Cloudflare Tunnel itself runs
+natively on the host (systemd `cloudflared`), not in Docker.
 
 ## 1. Install Docker + the Compose plugin (on the Debian server)
 
@@ -50,8 +51,8 @@ Fill in only the secrets (the rest have defaults in `docker-compose.yml`):
 
 ```
 NEXT_PUBLIC_SITE_NAME=Checkmate Coach
-OPENAI_API_KEY=
-LLM_MODEL=gpt-4o-mini
+DEEPSEEK_API_KEY=sk-...
+DEEPSEEK_MODEL=deepseek-reasoner
 STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_PRICE_ID=price_...
@@ -96,15 +97,15 @@ Cloudflare Tunnel instead of a reverse proxy. No inbound ports are needed —
 Cloudflare handles DNS and TLS for `chess.njxai.com`.
 
 1. **Cloudflare Zero Trust** -> Networks -> Tunnels -> Create a tunnel
-   (Cloudflared). Copy the token.
+   (Cloudflared). Install and run `cloudflared` on the host, e.g.:
+   ```bash
+   sudo cloudflared service install <TOKEN>
+   ```
 2. In the tunnel's **Public Hostnames**, add:
    - Subdomain: `chess`, Domain: `njxai.com`
-   - Service type: `HTTP`, URL: `web:3000`
-3. Put the token in `.env`:
-   ```
-   CLOUDFLARE_TUNNEL_TOKEN=<your-token>
-   ```
-4. Rebuild:
+   - Service type: `HTTP`, URL: `http://localhost:3000`
+   (the web container publishes `127.0.0.1:3000` on the host)
+3. Start the Docker stack (no tunnel token is needed in `.env`):
    ```bash
    sudo docker compose up -d
    ```
