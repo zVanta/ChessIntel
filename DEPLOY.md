@@ -1,8 +1,8 @@
 # Deploying to a Debian server (Docker)
 
-Target: the app is served at `https://chess.njxai.com` (HTTPS via Caddy +
-Let's Encrypt). The stack has the Next.js web app, the Python analysis/OCR
-service, and a Caddy reverse proxy, plus a persisted SQLite volume.
+Target: the app is served at `https://chess.njxai.com` (HTTPS via Cloudflare
+Tunnel). The stack has the Next.js web app, the Python analysis/OCR service,
+and a Cloudflare Tunnel connector, plus a persisted SQLite volume.
 
 ## 1. Install Docker + the Compose plugin (on the Debian server)
 
@@ -89,31 +89,34 @@ sudo docker run --rm -v checkmate-coach_chess-data:/data -v "$PWD":/backup alpin
   cp /data/chess.db /backup/chess.db.bak
 ```
 
-## 6. DNS + HTTPS (already wired into docker-compose)
+## 6. Routing + HTTPS via Cloudflare Tunnel
 
-The Android app (Trusted Web Activity) requires HTTPS, so the stack includes
-Caddy as a reverse proxy with automatic Let's Encrypt certificates.
+Ports 80/443 on this server are used by LibreChat's nginx, so this stack uses a
+Cloudflare Tunnel instead of a reverse proxy. No inbound ports are needed —
+Cloudflare handles DNS and TLS for `chess.njxai.com`.
 
-1. **Create a DNS record** at your registrar: an `A` record for `chess` pointing
-   at the VPS IP. Wait for it to propagate.
-2. **Open ports 80 and 443** on the VPS firewall:
+1. **Cloudflare Zero Trust** -> Networks -> Tunnels -> Create a tunnel
+   (Cloudflared). Copy the token.
+2. In the tunnel's **Public Hostnames**, add:
+   - Subdomain: `chess`, Domain: `njxai.com`
+   - Service type: `HTTP`, URL: `web:3000`
+3. Put the token in `.env`:
+   ```
+   CLOUDFLARE_TUNNEL_TOKEN=<your-token>
+   ```
+4. Rebuild:
    ```bash
-   sudo ufw allow 80/tcp
-   sudo ufw allow 443/tcp
+   sudo docker compose up -d
    ```
-3. On `docker compose up`, Caddy obtains the certificate automatically — no
-   extra config. The `Caddyfile` is simply:
-   ```
-   chess.njxai.com {
-       reverse_proxy web:3000
-       encode gzip
-   }
-   ```
-4. **Digital Asset Links** (Android app verification) are served from
-   `public/.well-known/assetlinks.json`. It contains the **debug** signing-key
-   fingerprint (matches `android/checkmate-coach-debug.apk`). The debug key is
-   per-machine, so rebuild the APK on the same machine for testing, or replace
-   the fingerprint with your release key's SHA-256 for the Play Store.
+5. **Digital Asset Links** (Android app verification) are served from
+   `public/.well-known/assetlinks.json` (Cloudflare passes it through). It
+   contains the **debug** signing-key fingerprint (matches
+   `android/checkmate-coach-debug.apk`). The debug key is per-machine, so rebuild
+   the APK on the same machine for testing, or replace the fingerprint with your
+   release key's SHA-256 for the Play Store.
+
+> Prefer a reverse proxy instead of a tunnel? The `Caddyfile` is kept in the
+> repo — but it needs ports 80/443 free (they're not, while LibreChat runs).
 
 ## 7. Stripe webhooks
 

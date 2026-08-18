@@ -34,21 +34,16 @@ services:
       - service
     restart: unless-stopped
 
-  # Reverse proxy + automatic Let's Encrypt TLS for chess.njxai.com.
-  caddy:
-    image: caddy:2
+  # Cloudflare Tunnel — no inbound ports needed; Cloudflare handles DNS + TLS.
+  # In the Cloudflare dashboard, route chess.njxai.com to http://web:3000.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
     restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     depends_on:
       - web
 
 volumes:
   chess-data:
-  caddy-data:
-  caddy-config:
