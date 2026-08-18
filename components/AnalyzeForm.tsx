@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { KidWithMeta } from "@/lib/types";
 import { pollJob } from "@/lib/poll";
@@ -44,6 +45,7 @@ export default function AnalyzeForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [answer, setAnswer] = useState<string | null>(null);
+  const [outOfCredits, setOutOfCredits] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,7 +105,14 @@ export default function AnalyzeForm() {
       form.append("answers", JSON.stringify(cleanAnswers));
       const res = await fetch("/api/upload-scoresheet", { method: "POST", body: form });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload failed.");
+      if (!res.ok) {
+        if (res.status === 402) {
+          setOutOfCredits(true);
+          setBusy(false);
+          return setError(data.error || "No credits left.");
+        }
+        throw new Error(data.error || "Upload failed.");
+      }
       setScoresheetFile(null);
       pollJob(
         data.jobId,
@@ -133,7 +142,14 @@ export default function AnalyzeForm() {
         body: JSON.stringify({ kidId, platform, username, maxGames, notes, answers: cleanAnswers }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Analysis failed.");
+      if (!res.ok) {
+        if (res.status === 402) {
+          setOutOfCredits(true);
+          setBusy(false);
+          return setError(data.error || "No credits left.");
+        }
+        throw new Error(data.error || "Analysis failed.");
+      }
       pollJob(
         data.jobId,
         (result) => {
@@ -163,7 +179,14 @@ export default function AnalyzeForm() {
         body: JSON.stringify({ kidId, pgn: pgnText, notes, answers: cleanAnswers }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "PGN analysis failed.");
+      if (!res.ok) {
+        if (res.status === 402) {
+          setOutOfCredits(true);
+          setBusy(false);
+          return setError(data.error || "No credits left.");
+        }
+        throw new Error(data.error || "PGN analysis failed.");
+      }
       pollJob(
         data.jobId,
         (result) => {
@@ -205,6 +228,7 @@ export default function AnalyzeForm() {
   function submit() {
     setError(null);
     setAnswer(null);
+    setOutOfCredits(false);
     if (mode === "scoresheet") return handleScoresheet();
     if (mode === "online") return handleOnline();
     if (mode === "pgn") return handlePgn();
@@ -452,7 +476,19 @@ export default function AnalyzeForm() {
                   ? "Analyze games"
                   : "Analyze"}
           </button>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && (
+            <div className="text-sm text-red-600">
+              <p>{error}</p>
+              {outOfCredits && (
+                <Link
+                  href="/profile"
+                  className="mt-1 inline-block font-semibold text-indigo-700 underline"
+                >
+                  Fund credits — $20/mo
+                </Link>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

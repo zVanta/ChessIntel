@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { pollJob } from "@/lib/poll";
 
 interface Props {
@@ -16,6 +17,7 @@ export default function ScoreSheetUpload({ kidId, kidName, onDone }: Props) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [outOfCredits, setOutOfCredits] = useState(false);
 
   async function handleUpload() {
     if (!selectedFile) {
@@ -34,7 +36,15 @@ export default function ScoreSheetUpload({ kidId, kidName, onDone }: Props) {
         body: form,
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload failed.");
+      if (!res.ok) {
+        if (res.status === 402) {
+          setOutOfCredits(true);
+          setError(data.error || "No credits left.");
+          setUploading(false);
+          return;
+        }
+        throw new Error(data.error || "Upload failed.");
+      }
       pollJob(
         data.jobId,
         () => {
@@ -106,7 +116,19 @@ export default function ScoreSheetUpload({ kidId, kidName, onDone }: Props) {
           {uploading ? "Reading…" : "Upload"}
         </button>
       </div>
-      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+      {error && (
+        <div className="mt-2 text-xs text-red-600">
+          <p>{error}</p>
+          {outOfCredits && (
+            <Link
+              href="/profile"
+              className="mt-1 inline-block font-semibold text-indigo-700 underline"
+            >
+              Fund credits — $20/mo
+            </Link>
+          )}
+        </div>
+      )}
       {success && <p className="mt-2 text-xs text-emerald-600">Report created!</p>}
     </div>
   );

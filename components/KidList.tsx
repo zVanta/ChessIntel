@@ -13,9 +13,11 @@ export default function KidList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyKid, setBusyKid] = useState<number | null>(null);
-  const [actionError, setActionError] = useState<{ kidId: number; message: string } | null>(
-    null
-  );
+  const [actionError, setActionError] = useState<{
+    kidId: number;
+    message: string;
+    outOfCredits?: boolean;
+  } | null>(null);
   const [platforms, setPlatforms] = useState<Record<number, string>>({});
   const [billingEnabled, setBillingEnabled] = useState(true);
 
@@ -60,7 +62,18 @@ export default function KidList() {
         body: JSON.stringify({ kidId: kid.id, platform }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Analysis failed.");
+      if (!res.ok) {
+        if (res.status === 402) {
+          setBusyKid(null);
+          setActionError({
+            kidId: kid.id,
+            message: data.error || "No credits left.",
+            outOfCredits: true,
+          });
+          return;
+        }
+        throw new Error(data.error || "Analysis failed.");
+      }
       pollJob(
         data.jobId,
         (result) => {
@@ -164,9 +177,17 @@ export default function KidList() {
             </div>
 
             {actionError?.kidId === kid.id && (
-              <p className="mt-3 rounded-md bg-red-50 p-2 text-sm text-red-700">
-                {actionError.message}
-              </p>
+              <div className="mt-3 rounded-md bg-red-50 p-2 text-sm text-red-700">
+                <p>{actionError.message}</p>
+                {actionError.outOfCredits && (
+                  <Link
+                    href="/profile"
+                    className="mt-1 inline-block font-semibold text-indigo-700 underline"
+                  >
+                    Fund credits — $20/mo
+                  </Link>
+                )}
+              </div>
             )}
 
             <div className="mt-4">
