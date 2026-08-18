@@ -1,8 +1,10 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { getKid, getReport } from "@/lib/db";
+import { getSessionUser, isAdmin } from "@/lib/auth";
 import { Markdown } from "@/lib/markdown";
 import PrintButton from "@/components/PrintButton";
+import ReportChat from "@/components/ReportChat";
 
 export const metadata = { title: "Report" };
 
@@ -20,9 +22,15 @@ function formatDate(sqliteDate: string): string {
 }
 
 export default function ReportPage({ params }: { params: { id: string } }) {
+  const user = getSessionUser();
+  if (!user) redirect("/login");
+
   const report = getReport(Number(params.id));
   if (!report) notFound();
   const kid = getKid(report.kid_id);
+  if (!isAdmin(user) && kid && kid.user_id != null && kid.user_id !== user.id) {
+    notFound();
+  }
   const kidName = kid?.name ?? "Player";
 
   let markdown = report.summary_text;
@@ -69,6 +77,10 @@ export default function ReportPage({ params }: { params: { id: string } }) {
           </span>
           <span className="report-brand-tagline">Engine-checked chess analysis.</span>
         </div>
+      </div>
+
+      <div className="mt-6 print:hidden">
+        <ReportChat reportId={report.id} kidName={kidName} />
       </div>
     </div>
   );

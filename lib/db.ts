@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
+import { hashPassword } from "./password";
 import type {
   DrillFollowup,
   GameRow,
@@ -9,6 +10,7 @@ import type {
   KidWithMeta,
   ProgressRow,
   Report,
+  User,
 } from "./types";
 
 let _db: Database.Database | null = null;
@@ -30,11 +32,26 @@ function ensureColumn(db: Database.Database, table: string, column: string, defi
 
 function migrate(db: Database.Database): void {
   db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'user',
+      credits INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS kids (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
+      age TEXT,
+      uscf_rating TEXT,
+      fide_rating TEXT,
+      online_rating TEXT,
       chesscom_username TEXT,
       lichess_username TEXT,
+      focus_notes TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       stripe_customer_id TEXT,
       subscription_status TEXT NOT NULL DEFAULT 'none'
@@ -72,11 +89,38 @@ function migrate(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_reports_kid ON reports(kid_id);
     CREATE INDEX IF NOT EXISTS idx_games_report ON games(report_id);
     CREATE INDEX IF NOT EXISTS idx_followups_kid ON drill_followups(kid_id);
+    CREATE INDEX IF NOT EXISTS idx_kids_user ON kids(user_id);
   `);
 
-  // Idempotent column additions for the billing feature (stage 2).
+  // Idempotent column additions for older databases.
+  ensureColumn(db, "kids", "user_id", "INTEGER");
+  ensureColumn(db, "kids", "age", "TEXT");
+  ensureColumn(db, "kids", "uscf_rating", "TEXT");
+  ensureColumn(db, "kids", "fide_rating", "TEXT");
+  ensureColumn(db, "kids", "online_rating", "TEXT");
+  ensureColumn(db, "kids", "focus_notes", "TEXT");
   ensureColumn(db, "kids", "stripe_customer_id", "TEXT");
   ensureColumn(db, "kids", "subscription_status", "TEXT NOT NULL DEFAULT 'none'");
+
+  seedAdmin(db);
+}
+
+function seedAdmin(db: Database.Database): void {
+  const existing = db
+    .prepare(`SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1`)
+    .get() as { id: number } | undefined;
+  if (existing) return;
+
+  const email = process.env.ADMIN_EMAIL || "admin@checkmatecoach.app";
+  const password = process.env.ADMIN_PASSWORD || "admin1234";
+  const hash = hashPassword(password);
+  const info = db
+    .prepare(`INSERT INTO users (email, password_hash, role, credits) VALUES (?, ?, 'admin', 999999)`)
+    .run(email, hash);
+  const adminId = Number(info.lastInsertRowid);
+
+  // Adopt any pre-existing kids that don't belong to a user yet.
+  db.prepare(`UPDATE kids SET user_id = ? WHERE user_id IS NULL`).run(adminId);
 }
 
 export function getDb(): Database.Database {
@@ -115,32 +159,124 @@ export function resetDbForTests(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Users
+// ---------------------------------------------------------------------------
+
+export function createUser(email: string, passwordHash: string, role = "user", credits = 1): User {
+  const info = getDb()
+    .prepare(`INSERT INTO users (email, password_hash, role, credits) VALUES (?, ?, ?, ?)`)
+    .run(email.toLowerCase().trim(), passwordHash, role, credits);
+  return getUserById(Number(info.lastInsertRowid)) as User;
+}
+
+export function getUserByEmail(email: string): User | undefined {
+  return getDb()
+    .prepare(`SELECT * FROM users WHERE email = ?`)
+    .get(email.toLowerCase().trim()) as User | undefined;
+}
+
+export function getUserById(id: number): User | undefined {
+  return getDb().prepare(`SELECT * FROM users WHERE id = ?`).get(id) as User | undefined;
+}
+
+export function listUsers(): User[] {
+  return getDb().prepare(`SELECT * FROM users ORDER BY created_at ASC, id ASC`).all() as User[];
+}
+
+export function updateUserRole(userId: number, role: string): void {
+  getDb().prepare(`UPDATE users SET role = ? WHERE id = ?`).run(role, userId);
+}
+
+export function setUserCredits(userId: number, credits: number): void {
+  getDb()
+    .prepare(`UPDATE users SET credits = ? WHERE id = ?`)
+    .run(Math.max(0, Math.floor(credits)), userId);
+}
+
+export function deleteUser(userId: number): void {
+  getDb().prepare(`DELETE FROM users WHERE id = ?`).run(userId);
+}
+
+// ---------------------------------------------------------------------------
 // Kids
 // ---------------------------------------------------------------------------
 
-export function createKid(
-  name: string,
-  chesscomUsername: string | null,
-  lichessUsername: string | null
-): Kid {
+export interface CreateKidInput {
+  name: string;
+  chesscomUsername: string | null;
+  lichessUsername: string | null;
+  userId: number;
+  age?: string | null;
+  uscfRating?: string | null;
+  fideRating?: string | null;
+  onlineRating?: string | null;
+  focusNotes?: string | null;
+}
+
+export function createKid(input: CreateKidInput): Kid {
   const info = getDb()
     .prepare(
-      `INSERT INTO kids (name, chesscom_username, lichess_username)
-       VALUES (?, ?, ?)`
+      `INSERT INTO kids
+         (user_id, name, age, uscf_rating, fide_rating, online_rating,
+          chesscom_username, lichess_username, focus_notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(name, chesscomUsername || null, lichessUsername || null);
+    .run(
+      input.userId,
+      input.name,
+      input.age || null,
+      input.uscfRating || null,
+      input.fideRating || null,
+      input.onlineRating || null,
+      input.chesscomUsername || null,
+      input.lichessUsername || null,
+      input.focusNotes || null
+    );
   return getKid(Number(info.lastInsertRowid)) as Kid;
+}
+
+export function updateKid(
+  id: number,
+  fields: Partial<{
+    name: string;
+    age: string | null;
+    uscf_rating: string | null;
+    fide_rating: string | null;
+    online_rating: string | null;
+    chesscom_username: string | null;
+    lichess_username: string | null;
+    focus_notes: string | null;
+  }>
+): void {
+  const columns = Object.keys(fields);
+  if (columns.length === 0) return;
+  const assignments = columns.map((c) => `${c} = ?`).join(", ");
+  const values = columns.map((c) => (fields as Record<string, unknown>)[c]);
+  getDb()
+    .prepare(`UPDATE kids SET ${assignments} WHERE id = ?`)
+    .run(...values, id);
+}
+
+export function deleteKid(id: number): void {
+  getDb().prepare(`DELETE FROM kids WHERE id = ?`).run(id);
 }
 
 export function getKid(id: number): Kid | undefined {
   return getDb().prepare(`SELECT * FROM kids WHERE id = ?`).get(id) as Kid | undefined;
 }
 
-export function listKids(): Kid[] {
-  return getDb().prepare(`SELECT * FROM kids ORDER BY created_at DESC`).all() as Kid[];
+export function listKids(userId?: number): Kid[] {
+  if (userId == null) {
+    return getDb().prepare(`SELECT * FROM kids ORDER BY created_at DESC`).all() as Kid[];
+  }
+  return getDb()
+    .prepare(`SELECT * FROM kids WHERE user_id = ? ORDER BY created_at DESC`)
+    .all(userId) as Kid[];
 }
 
-export function getKidsWithMeta(): KidWithMeta[] {
+export function getKidsWithMeta(userId?: number): KidWithMeta[] {
+  const where = userId == null ? "" : "WHERE k.user_id = ?";
+  const params = userId == null ? [] : [userId];
   return getDb()
     .prepare(
       `SELECT k.*,
@@ -149,9 +285,10 @@ export function getKidsWithMeta(): KidWithMeta[] {
               (SELECT r.recurring_habit FROM reports r
                  WHERE r.kid_id = k.id ORDER BY r.created_at DESC, r.id DESC LIMIT 1) AS tracked_habit
        FROM kids k
+       ${where}
        ORDER BY k.created_at DESC`
     )
-    .all() as KidWithMeta[];
+    .all(...params) as KidWithMeta[];
 }
 
 // ---------------------------------------------------------------------------

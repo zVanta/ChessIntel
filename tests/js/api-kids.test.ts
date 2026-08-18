@@ -12,6 +12,19 @@ vi.mock("next/server", () => ({
   },
 }));
 
+// Mock the auth layer so the route sees a signed-in parent user.
+vi.mock("../../lib/auth", () => ({
+  getSessionUser: () => ({
+    id: 1,
+    email: "test@example.com",
+    password_hash: "x",
+    role: "user",
+    credits: 5,
+    created_at: "",
+  }),
+  isAdmin: () => false,
+}));
+
 import { POST } from "../../app/api/kids/route";
 import { resetDbForTests } from "../../lib/db";
 
@@ -48,9 +61,11 @@ describe("POST /api/kids", () => {
     expect(res.status).toBe(400);
   });
 
-  it("rejects when no username is provided", async () => {
+  it("creates a kid with just a name (usernames are optional)", async () => {
     const res = await POST(makeRequest({ name: "Alice" }));
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.kid.name).toBe("Alice");
   });
 
   it("creates a kid with valid input", async () => {

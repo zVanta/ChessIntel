@@ -10,14 +10,15 @@ interface Props {
 }
 
 export default function ScoreSheetUpload({ kidId, kidName, onDone }: Props) {
+  const cameraRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
   async function handleUpload() {
-    const file = fileRef.current?.files?.[0];
-    if (!file) {
+    if (!selectedFile) {
       setError("Choose a scoresheet photo first.");
       return;
     }
@@ -26,7 +27,7 @@ export default function ScoreSheetUpload({ kidId, kidName, onDone }: Props) {
     setSuccess(false);
     try {
       const form = new FormData();
-      form.append("image", file);
+      form.append("image", selectedFile);
       form.append("kidId", String(kidId));
       const res = await fetch("/api/upload-scoresheet", {
         method: "POST",
@@ -38,7 +39,7 @@ export default function ScoreSheetUpload({ kidId, kidName, onDone }: Props) {
         data.jobId,
         () => {
           setSuccess(true);
-          if (fileRef.current) fileRef.current.value = "";
+          setSelectedFile(null);
           setUploading(false);
           onDone?.();
         },
@@ -58,17 +59,48 @@ export default function ScoreSheetUpload({ kidId, kidName, onDone }: Props) {
       <p className="text-sm font-medium text-slate-700">
         Upload a scoresheet photo for {kidName}
       </p>
-      <div className="mt-2 flex items-center gap-2">
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="block w-full text-xs text-slate-600 file:mr-2 file:rounded file:border-0 file:bg-slate-200 file:px-3 file:py-1.5 file:text-xs file:font-medium"
-        />
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) setSelectedFile(f);
+        }}
+      />
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) setSelectedFile(f);
+        }}
+      />
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => cameraRef.current?.click()}
+          className="rounded-md bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-900"
+        >
+          📷 Take photo
+        </button>
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+        >
+          🖼 Upload picture
+        </button>
+        {selectedFile && (
+          <span className="text-xs text-slate-500">✓ {selectedFile.name}</span>
+        )}
         <button
           onClick={handleUpload}
-          disabled={uploading}
+          disabled={uploading || !selectedFile}
           className="shrink-0 rounded-md bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-900 disabled:opacity-50"
         >
           {uploading ? "Reading…" : "Upload"}

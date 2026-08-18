@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
+import LogoutButton from "@/components/LogoutButton";
+import { getSessionUser, isAdmin } from "@/lib/auth";
 import "./globals.css";
 
 const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME || "Checkmate Coach";
@@ -27,6 +29,8 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const user = getSessionUser();
+
   return (
     <html lang="en">
       <head>
@@ -40,25 +44,42 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen">
         <header className="border-b border-slate-200 bg-white">
           <nav className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
-            <Link href="/" className="text-lg font-bold text-slate-900">
+            <Link href={user ? "/dashboard" : "/"} className="text-lg font-bold text-slate-900">
               {SITE_NAME}
             </Link>
             <div className="flex items-center gap-4 text-sm font-medium text-slate-600">
-              <Link href="/analyze" className="hover:text-slate-900">
-                Analyze
-              </Link>
-              <Link href="/dashboard" className="hover:text-slate-900">
-                Dashboard
-              </Link>
-              <Link href="/progress" className="hover:text-slate-900">
-                Progress
-              </Link>
-              <Link
-                href="/onboard"
-                className="rounded-md bg-emerald-600 px-3 py-1.5 text-white hover:bg-emerald-700"
-              >
-                Add player
-              </Link>
+              {user ? (
+                <>
+                  <Link href="/analyze" className="hover:text-slate-900">
+                    Analyze
+                  </Link>
+                  <Link href="/dashboard" className="hover:text-slate-900">
+                    Dashboard
+                  </Link>
+                  <Link href="/progress" className="hover:text-slate-900">
+                    Progress
+                  </Link>
+                  <Link href="/profile" className="hover:text-slate-900">
+                    Profile
+                  </Link>
+                  {isAdmin(user) && (
+                    <Link href="/admin" className="font-semibold text-indigo-700 hover:text-indigo-900">
+                      Admin
+                    </Link>
+                  )}
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
+                    ⚡ {user.credits}
+                  </span>
+                  <LogoutButton />
+                </>
+              ) : (
+                <Link
+                  href="/login"
+                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-white hover:bg-emerald-700"
+                >
+                  Log in
+                </Link>
+              )}
             </div>
           </nav>
         </header>

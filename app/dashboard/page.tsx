@@ -1,8 +1,13 @@
+import { redirect } from "next/navigation";
+import { getSessionUser } from "@/lib/auth";
 import KidList from "@/components/KidList";
 
 export const metadata = { title: "Dashboard" };
 
 export default function DashboardPage() {
+  const user = getSessionUser();
+  if (!user) redirect("/login?next=/dashboard");
+
   return (
     <div>
       <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>

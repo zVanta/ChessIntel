@@ -1,8 +1,23 @@
+export interface User {
+  id: number;
+  email: string;
+  password_hash: string;
+  role: "admin" | "user" | string;
+  credits: number;
+  created_at: string;
+}
+
 export interface Kid {
   id: number;
+  user_id: number | null;
   name: string;
+  age: string | null;
+  uscf_rating: string | null;
+  fide_rating: string | null;
+  online_rating: string | null;
   chesscom_username: string | null;
   lichess_username: string | null;
+  focus_notes: string | null;
   created_at: string;
   stripe_customer_id: string | null;
   subscription_status: "none" | "active" | "canceled" | "past_due" | string;

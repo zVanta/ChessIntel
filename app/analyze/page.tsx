@@ -1,8 +1,13 @@
+import { redirect } from "next/navigation";
+import { getSessionUser } from "@/lib/auth";
 import AnalyzeForm from "@/components/AnalyzeForm";
 
 export const metadata = { title: "Analyze" };
 
 export default function AnalyzePage() {
+  const user = getSessionUser();
+  if (!user) redirect("/login?next=/analyze");
+
   return (
     <div>
       <h1 className="text-3xl font-bold text-slate-900">Get a game analyzed.</h1>

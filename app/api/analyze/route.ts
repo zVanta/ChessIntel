@@ -1,13 +1,17 @@
 import { NextResponse } from "next/server";
 import { getKid } from "@/lib/db";
-import { canGenerateReport } from "@/lib/billing";
 import { runAnalysis } from "@/lib/python";
 import { persistAnalysis } from "@/lib/persist";
 import { completeJob, createJob, failJob } from "@/lib/jobs";
+import { getSessionUser, isAdmin } from "@/lib/auth";
+import { consumeCredit, refundCredit } from "@/lib/credits";
 
 const PLATFORMS = ["lichess", "chesscom"] as const;
 
 export async function POST(req: Request) {
+  const user = getSessionUser();
+  if (!user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+
   let body: unknown;
   try {
     body = await req.json();
@@ -22,6 +26,9 @@ export async function POST(req: Request) {
   }
   const kid = getKid(kidId);
   if (!kid) {
+    return NextResponse.json({ error: "Kid not found." }, { status: 404 });
+  }
+  if (!isAdmin(user) && kid.user_id !== user.id) {
     return NextResponse.json({ error: "Kid not found." }, { status: 404 });
   }
 
@@ -53,12 +60,10 @@ export async function POST(req: Request) {
     );
   }
 
-  if (!canGenerateReport(kidId)) {
+  // Credit system: one report costs one credit (admins are effectively unlimited).
+  if (!consumeCredit(user.id)) {
     return NextResponse.json(
-      {
-        error:
-          "Subscription required. The first report is free; please subscribe to generate more reports.",
-      },
+      { error: "No credits left. Ask the admin to top up your account." },
       { status: 402 }
     );
   }
@@ -91,6 +96,7 @@ export async function POST(req: Request) {
         game_count: persisted.games.length,
       });
     } catch (err) {
+      refundCredit(user.id);
       failJob(job.id, err instanceof Error ? err.message : "Analysis failed.");
     }
   })();

@@ -1,4 +1,6 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
+import { getSessionUser } from "@/lib/auth";
 import ProgressView from "@/components/ProgressView";
 
 export const metadata = { title: "Progress" };
@@ -8,6 +10,8 @@ export default function ProgressPage({
 }: {
   searchParams: { kid?: string };
 }) {
+  const user = getSessionUser();
+  if (!user) redirect("/login?next=/progress");
   const kidId = searchParams.kid ? Number(searchParams.kid) : null;
   return (
     <div>

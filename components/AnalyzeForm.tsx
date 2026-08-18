@@ -24,6 +24,7 @@ const KID_QUESTIONS = [
 
 export default function AnalyzeForm() {
   const router = useRouter();
+  const cameraRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [kids, setKids] = useState<KidWithMeta[]>([]);
@@ -32,6 +33,7 @@ export default function AnalyzeForm() {
   const [notes, setNotes] = useState("");
   const [answers, setAnswers] = useState<string[]>(["", "", "", "", ""]);
   const [showQuestions, setShowQuestions] = useState(false);
+  const [scoresheetFile, setScoresheetFile] = useState<File | null>(null);
 
   const [platform, setPlatform] = useState<"chesscom" | "lichess">("chesscom");
   const [username, setUsername] = useState("");
@@ -89,20 +91,20 @@ export default function AnalyzeForm() {
   const cleanAnswers = answers.map((a) => a.trim()).filter(Boolean);
 
   async function handleScoresheet() {
-    const file = fileRef.current?.files?.[0];
-    if (!file) return setError("Choose a scoresheet photo first.");
+    if (!scoresheetFile) return setError("Choose a scoresheet photo first.");
     if (kidId == null) return setError("Choose a player first.");
     setBusy(true);
     setError(null);
     try {
       const form = new FormData();
-      form.append("image", file);
+      form.append("image", scoresheetFile);
       form.append("kidId", String(kidId));
       form.append("notes", notes);
       form.append("answers", JSON.stringify(cleanAnswers));
       const res = await fetch("/api/upload-scoresheet", { method: "POST", body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload failed.");
+      setScoresheetFile(null);
       pollJob(
         data.jobId,
         (result) => {
@@ -262,12 +264,45 @@ export default function AnalyzeForm() {
               Snap the paper scoresheet and we&apos;ll read every move into a report.
             </p>
             <input
-              ref={fileRef}
+              ref={cameraRef}
               type="file"
               accept="image/*"
               capture="environment"
-              className="mt-3 block w-full text-sm text-slate-600 file:mr-2 file:rounded file:border-0 file:bg-slate-200 file:px-3 file:py-1.5 file:text-sm file:font-medium"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) setScoresheetFile(f);
+              }}
             />
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) setScoresheetFile(f);
+              }}
+            />
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => cameraRef.current?.click()}
+                className="rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-900"
+              >
+                📷 Take photo
+              </button>
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                🖼 Upload picture
+              </button>
+              {scoresheetFile && (
+                <span className="text-sm text-slate-500">✓ {scoresheetFile.name}</span>
+              )}
+            </div>
           </div>
         )}
 

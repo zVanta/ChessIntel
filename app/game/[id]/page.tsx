@@ -1,6 +1,7 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import ChessGameViewer from "@/components/ChessGameViewer";
 import { getGame, getReport } from "@/lib/db";
+import { getSessionUser } from "@/lib/auth";
 
 export const metadata = { title: "Game" };
 
@@ -12,6 +13,9 @@ interface GameBlunder {
 }
 
 export default function GamePage({ params }: { params: { id: string } }) {
+  const user = getSessionUser();
+  if (!user) redirect("/login");
+
   const game = getGame(Number(params.id));
   if (!game) notFound();
 
