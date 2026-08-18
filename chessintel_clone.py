@@ -33,6 +33,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 import chess
 import chess.engine
+import chess.pgn
 import requests
 
 
