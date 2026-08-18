@@ -67,6 +67,9 @@ LLM_MODEL: str = os.environ.get("LLM_MODEL", "gpt-4o-mini")
 LLM_BASE_URL: str = os.environ.get("LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
 LLM_ENDPOINT: Optional[str] = os.environ.get("LLM_ENDPOINT")
 
+# chess.com requires a descriptive User-Agent; the requests default is 403'd.
+USER_AGENT: str = "CheckmateCoach/1.0 (https://github.com/zVanta/ChessIntel)"
+
 ANALYSIS_DEPTH: int = 18
 BLUNDER_THRESHOLD_CP: int = 250
 
@@ -128,7 +131,12 @@ def fetch_lichess_games(username: str, max_games: int = 50, since_days: int = 30
     since_ms = int((_now_utc() - timedelta(days=since_days)).timestamp() * 1000)
     url = LICHESS_GAMES_URL.format(username=username)
     params = {"max": max_games, "since": since_ms, "pgnInJson": "true"}
-    resp = requests.get(url, params=params, headers={"Accept": "application/x-ndjson"}, timeout=30)
+    resp = requests.get(
+        url,
+        params=params,
+        headers={"Accept": "application/x-ndjson", "User-Agent": USER_AGENT},
+        timeout=30,
+    )
     resp.raise_for_status()
 
     games: List[Dict[str, Any]] = []
@@ -173,7 +181,11 @@ def fetch_chesscom_games(username: str, max_games: int = 50, since_days: int = 3
     Returns a list of game dicts with keys: source, external_id, pgn, white,
     black, result, played_at.
     """
-    archives_resp = requests.get(CHESSCOM_ARCHIVES_URL.format(username=username), timeout=30)
+    archives_resp = requests.get(
+        CHESSCOM_ARCHIVES_URL.format(username=username),
+        headers={"User-Agent": USER_AGENT},
+        timeout=30,
+    )
     archives_resp.raise_for_status()
     archives = archives_resp.json().get("archives", [])
 
@@ -183,7 +195,7 @@ def fetch_chesscom_games(username: str, max_games: int = 50, since_days: int = 3
     for archive_url in reversed(archives):
         if len(games) >= max_games:
             break
-        month_resp = requests.get(archive_url, timeout=30)
+        month_resp = requests.get(archive_url, headers={"User-Agent": USER_AGENT}, timeout=30)
         month_resp.raise_for_status()
         month_games = month_resp.json().get("games", [])
         for g in reversed(month_games):
