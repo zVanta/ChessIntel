@@ -65,6 +65,12 @@ export async function POST(req: Request) {
   const rawMax = Number(input.maxGames ?? 20);
   const maxGames = Math.max(1, Math.min(50, Number.isFinite(rawMax) ? rawMax : 20));
 
+  const notes =
+    typeof input.notes === "string" && input.notes.trim() ? input.notes.trim() : undefined;
+  const answers = Array.isArray(input.answers)
+    ? (input.answers as unknown[]).map((a) => String(a ?? "").trim()).filter(Boolean)
+    : undefined;
+
   try {
     const result = await runAnalysis({
       platform,
@@ -72,6 +78,8 @@ export async function POST(req: Request) {
       kid_name: kid.name,
       max_games: maxGames,
       since_days: 30,
+      notes,
+      answers,
     });
     const persisted = persistAnalysis(kidId, result);
     return NextResponse.json(

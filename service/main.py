@@ -32,11 +32,21 @@ class AnalyzeRequest(BaseModel):
     kid_name: str = "Player"
     max_games: int = 50
     since_days: int = 30
+    notes: Optional[str] = None
+    answers: Optional[List[str]] = None
 
 
 class AnalyzePgnRequest(BaseModel):
     pgn: str
     kid_name: str = "Player"
+    notes: Optional[str] = None
+    answers: Optional[List[str]] = None
+
+
+class AskRequest(BaseModel):
+    question: str
+    kid_name: str = "Player"
+    notes: Optional[str] = None
 
 
 @app.get("/health")
@@ -53,12 +63,14 @@ def analyze(req: AnalyzeRequest) -> Dict[str, Any]:
         kid_name=req.kid_name,
         max_games=req.max_games,
         since_days=req.since_days,
+        notes=req.notes,
+        answers=req.answers,
     )
 
 
 @app.post("/analyze-pgn")
 def analyze_pgn(req: AnalyzePgnRequest) -> Dict[str, Any]:
-    """Analyze a single PGN (used after scoresheet OCR) and build a report."""
+    """Analyze a single PGN (used after scoresheet OCR / paste) and build a report."""
     engine = chessintel_clone._open_engine()
     try:
         report = chessintel_clone.analyze_game(
@@ -75,7 +87,12 @@ def analyze_pgn(req: AnalyzePgnRequest) -> Dict[str, Any]:
     habits = chessintel_clone.aggregate_habits([report])
     top_habit = habits[0]["habit"] if habits else "Piece safety"
     points_lost = round(report.get("points_lost", 0.0), 2)
-    summary = chessintel_clone.generate_report(req.kid_name, top_habit, 1)
+    context = chessintel_clone.build_report_context(
+        [report], "scoresheet", "", top_habit, notes=req.notes, answers=req.answers
+    )
+    markdown = chessintel_clone.generate_report(
+        req.kid_name, top_habit, 1, context=context
+    )
 
     return {
         "kid_name": req.kid_name,
@@ -83,11 +100,33 @@ def analyze_pgn(req: AnalyzePgnRequest) -> Dict[str, Any]:
         "username": "",
         "game_count": 1,
         "habit": top_habit,
-        "summary_text": summary,
+        "summary_text": chessintel_clone._short_version(markdown),
+        "report_markdown": markdown,
         "drill": chessintel_clone._DRILLS.get(top_habit, chessintel_clone._DEFAULT_DRILL),
         "points_lost": points_lost,
         "games": [report],
     }
+
+
+@app.post("/ask")
+def ask(req: AskRequest) -> Dict[str, str]:
+    """Answer a free-form chess question with no game required."""
+    import llm  # noqa: F401
+
+    system = (
+        "You are a patient, expert chess coach for junior players and their "
+        "parents. Answer clearly and concretely, under 250 words, in plain "
+        "language. Use Markdown sparingly (bold, short lists)."
+    )
+    user = f"Player: {req.kid_name}.\nQuestion: {req.question}"
+    if req.notes:
+        user += f"\nContext: {req.notes}"
+    try:
+        answer = llm.complete(system, user)
+        return {"answer": answer}
+    except Exception as exc:  # pragma: no cover - depends on live keys
+        return {"answer": f"Sorry — the coach is unreachable right now ({exc})."}
+
 
 
 @app.post("/ocr")

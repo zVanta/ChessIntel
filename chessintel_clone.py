@@ -271,6 +271,13 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
             score_before = _score_to_cp(info_before["score"], mover)
         except Exception:
             score_before = 0
+        best_san = None
+        try:
+            pv = info_before.get("pv") if isinstance(info_before, dict) else None
+            if pv:
+                best_san = board.san(pv[0])
+        except Exception:
+            best_san = None
         board.push(move)
         try:
             info_after = engine.analyse(board, chess.engine.Limit(depth=depth))
@@ -284,6 +291,7 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
             blunders.append({
                 "ply": ply,
                 "san": san,
+                "best": best_san,
                 "phase": phase,
                 "cp_loss": cp_loss,
             })
@@ -374,31 +382,462 @@ _DEFAULT_DRILL = (
     "board, writing down a safer alternative for each one."
 )
 
+# Report document branding. Kept separate from any third-party product name —
+# this is the app's own brand.
+SITE_NAME: str = os.environ.get("SITE_NAME", "Checkmate Coach")
+SITE_URL: str = os.environ.get("SITE_URL", "chess.njxai.com")
+SITE_CONTACT: str = os.environ.get("SITE_CONTACT", "info@checkmatecoach.app")
+
+
+def _played_date(played_at: Any) -> Optional[datetime]:
+    """Normalise an epoch (ms) or ISO timestamp to a timezone-aware datetime."""
+    if played_at is None:
+        return None
+    if isinstance(played_at, (int, float)):
+        try:
+            seconds = float(played_at) / 1000.0 if float(played_at) > 1e12 else float(played_at)
+            return datetime.utcfromtimestamp(seconds).replace(tzinfo=timezone.utc)
+        except Exception:
+            return None
+    if isinstance(played_at, str):
+        for fmt in ("%Y.%m.%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(played_at, fmt).replace(tzinfo=timezone.utc)
+            except Exception:
+                continue
+    return None
+
+
+def _outcome_for(report: Dict[str, Any], username: str) -> str:
+    """Return 'win', 'loss', 'draw' or 'unknown' from the kid's perspective."""
+    result = (report.get("result") or "").strip()
+    if result == "1/2-1/2":
+        return "draw"
+    white = (report.get("white") or "").strip()
+    black = (report.get("black") or "").strip()
+    uname = (username or "").strip().lower()
+    is_white = bool(uname) and white.lower() == uname
+    is_black = bool(uname) and black.lower() == uname
+    if result in ("1-0", "0-1"):
+        if (result == "1-0" and is_white) or (result == "0-1" and is_black):
+            return "win"
+        if is_white or is_black:
+            return "loss"
+    return "unknown"
+
+
+def _opponent_for(report: Dict[str, Any], username: str) -> str:
+    white = (report.get("white") or "").strip()
+    black = (report.get("black") or "").strip()
+    uname = (username or "").strip().lower()
+    if uname and black.lower() == uname:
+        return white or "Opponent"
+    return black or white or "Opponent"
+
+
+def _date_range(dates: List[datetime]) -> str:
+    if not dates:
+        return "recent games"
+    start, end = min(dates), max(dates)
+    if start.date() == end.date():
+        return start.strftime("%B %d, %Y")
+    if start.year == end.year and start.month == end.month:
+        return f"{start.strftime('%B')} {start.day}–{end.day}, {start.year}"
+    if start.year == end.year:
+        return f"{start.strftime('%B %d')} – {end.strftime('%B %d, %Y')}"
+    return f"{start.strftime('%B %d, %Y')} – {end.strftime('%B %d, %Y')}"
+
+
+def build_report_context(reports: List[Dict[str, Any]], platform: str,
+                         username: str, habit: str,
+                         notes: Optional[str] = None,
+                         answers: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Summarise analysed games into a compact, LLM-ready context dict."""
+    wins = losses = draws = 0
+    games_brief: List[Dict[str, str]] = []
+    moments: List[Dict[str, Any]] = []
+    dates: List[datetime] = []
+
+    for r in reports:
+        outcome = _outcome_for(r, username)
+        if outcome == "win":
+            wins += 1
+        elif outcome == "loss":
+            losses += 1
+        elif outcome == "draw":
+            draws += 1
+        opponent = _opponent_for(r, username)
+        games_brief.append({
+            "opponent": opponent,
+            "outcome": outcome,
+            "result": r.get("result") or "*",
+        })
+        for b in sorted(r.get("blunders") or [], key=lambda b: -(b.get("cp_loss") or 0))[:2]:
+            moments.append({
+                "san": b.get("san") or "?",
+                "best": b.get("best"),
+                "ply": b.get("ply"),
+                "phase": b.get("phase") or "middlegame",
+                "cp_loss": round((b.get("cp_loss") or 0) / 100.0, 1),
+                "opponent": opponent,
+            })
+        played = _played_date(r.get("played_at"))
+        if played:
+            dates.append(played)
+
+    moments = sorted(moments, key=lambda m: -m["cp_loss"])[:4]
+    platform_label = {
+        "chesscom": "Chess.com",
+        "lichess": "Lichess",
+    }.get(platform, platform or "online")
+
+    return {
+        "platform": platform_label,
+        "game_count": len(reports),
+        "wins": wins,
+        "losses": losses,
+        "draws": draws,
+        "date_range": _date_range(dates),
+        "habit": habit,
+        "games_brief": games_brief,
+        "moments": moments,
+        "notes": (notes or "").strip(),
+        "answers": [str(a).strip() for a in (answers or []) if a and str(a).strip()],
+    }
+
+
+_REPORT_SYSTEM = (
+    "You are the coach-writer for {site_name}, a service that turns a junior "
+    "chess player's games into plain-language coaching reports. You write warm, "
+    "concrete, parent- and kid-friendly prose in Markdown. Follow the section "
+    "template exactly and never invent facts beyond the context you are given; "
+    "when a detail is unknown, write around it. Keep the whole report under "
+    "about 650 words and never include raw PGN or engine JSON."
+).replace("{site_name}", SITE_NAME)
+
+
+def _report_user_prompt(kid_name: str, habit: str, game_count: int,
+                        drill: str, ctx: Dict[str, Any]) -> str:
+    facts = [
+        f"Player: {kid_name}",
+        f"Games reviewed: {game_count}",
+        f"Platform: {ctx.get('platform')}",
+        f"Date range: {ctx.get('date_range')}",
+        f"Results: {ctx.get('wins')} wins, {ctx.get('losses')} losses, "
+        f"{ctx.get('draws')} draws",
+        f"Recurring habit: {habit}",
+        f"Suggested drill: {drill}",
+    ]
+    brief = ctx.get("games_brief") or []
+    if brief:
+        facts.append("Games: " + "; ".join(
+            f"vs {g['opponent']} ({g['outcome']}, {g['result']})"
+            for g in brief[:12]
+        ))
+    moments = ctx.get("moments") or []
+    if moments:
+        facts.append("Key mistake moments: " + "; ".join(
+            f"{m['san']} at ply {m['ply']} ({m['phase']}, lost ~{m['cp_loss']} pawns)"
+            + (f" — engine preferred {m['best']}" if m.get("best") else "")
+            + f" vs {m['opponent']}"
+            for m in moments
+        ))
+    if ctx.get("notes"):
+        facts.append(f"Parent note: {ctx['notes']}")
+    if ctx.get("answers"):
+        facts.append("What the kid said after the game:")
+        for i, a in enumerate(ctx["answers"], 1):
+            facts.append(f"  {i}. {a}")
+
+    template = [
+        "# {kid} — Game Set Report",
+        "",
+        "{count} Online Games · {platform} · {date_range}",
+        "",
+        "---",
+        "",
+        "## Short version",
+        "",
+        "(2–4 sentences: the set's results, the one pattern found, and the habit to build.)",
+        "",
+        "---",
+        "",
+        "**Baseline read:** {count} recent online games  ",
+        "**Pattern found:** {habit}  ",
+        "**Seen in this game:** Yes — <move> vs <opponent> (or “not this set” if it didn't fire)  ",
+        "**The habit to train:** <one concrete sentence>  ",
+        "**Tracking:** Begins with this report  ",
+        "",
+        "---",
+        "",
+        "## First, the wide view",
+        "",
+        "(Two short paragraphs: the player's style/strengths, then where points slip away.)",
+        "",
+        "---",
+        "",
+        "## Now, the games you sent us",
+        "",
+        "(One paragraph on this set's results and time controls.)",
+        "",
+        "---",
+        "",
+        "## What's working",
+        "",
+        "(Two or three bold-led short paragraphs naming real strengths, with game examples where the context supports it.)",
+        "",
+        "---",
+        "",
+        "## The pattern: {habit}",
+        "",
+        "The baseline showed this, and it fired again in this set.",
+        "",
+        "### Moment 1 — <bad move> instead of <better move> (vs <opponent>)",
+        "",
+        "(Explain the position, what was played, what the engine preferred, and why it matters.)",
+        "",
+        "---",
+        "",
+        "## The recurring weakness across the set",
+        "",
+        "(Summarise the pattern across the set and the simple fix.)",
+        "",
+        "---",
+        "",
+        "## One drill for this week",
+        "",
+        "**<Drill title>**",
+        "",
+        "1. <step one>",
+        "2. <step two>",
+        "3. <step three>",
+        "",
+        "---",
+        "",
+        "## For your coach",
+        "",
+        "(A pre-lesson brief for the coach: the student's recurring pattern, the "
+        "specific games/moves where it appeared, what to watch for at the next "
+        "lesson, and one 10-minute exercise to run first.)",
+        "",
+        "---",
+        "",
+        "Questions? Email [" + SITE_CONTACT + "](mailto:" + SITE_CONTACT + ")",
+        "— The " + SITE_NAME + " team",
+        "",
+        "---",
+        "",
+        "*One more thing: online games show habits, but tournament games are where "
+        "they cost points. Photograph a scoresheet or paste a PGN on the Analyze "
+        "page and the next report reads the real over-the-board play.*",
+    ]
+
+    body = "\n".join(template).replace("{kid}", kid_name).replace("{count}", str(game_count))
+    body = body.replace("{platform}", ctx.get("platform") or "online")
+    body = body.replace("{date_range}", ctx.get("date_range") or "recent games")
+    body = body.replace("{habit}", habit)
+
+    return (
+        "\n".join(facts)
+        + "\n\nOutput ONLY Markdown. Keep every heading, the '---' rules and the "
+        "bullet labels exactly as given; fill the prose between them. Replace the "
+        "<...> placeholders with specifics from the facts. End each '**Label:**' "
+        "stat line with two trailing spaces so it renders on its own line.\n\n"
+        + body
+    )
+
+
+def _build_markdown_report(kid_name: str, habit: str, game_count: int,
+                           drill: str, ctx: Dict[str, Any]) -> str:
+    """Deterministic markdown report used when no LLM is configured."""
+    platform = ctx.get("platform") or "online"
+    date_range = ctx.get("date_range") or "recent games"
+    wins = ctx.get("wins", 0)
+    losses = ctx.get("losses", 0)
+    draws = ctx.get("draws", 0)
+    brief = ctx.get("games_brief") or []
+    moments = ctx.get("moments") or []
+
+    if moments:
+        top = moments[0]
+        best = f" instead of {top['best']}" if top.get("best") else ""
+        seen_line = f"Yes — {top['san']}{best} vs {top['opponent']}"
+    else:
+        seen_line = "Not in this set — keep watching"
+
+    opponent_lines = "  \n".join(
+        f"vs {g['opponent']} — {g['result']}" for g in brief[:12]
+    ) or "No game details available."
+
+    moment_blocks = []
+    for i, m in enumerate(moments[:3], 1):
+        best_heading = f" instead of {m['best']}" if m.get("best") else ""
+        best_body = f" The engine preferred {m['best']}." if m.get("best") else ""
+        moment_blocks.append(
+            f"### Moment {i} — {m['san']}{best_heading} (vs {m['opponent']})\n\n"
+            f"In the {m['phase']} against {m['opponent']}, {m['san']} at ply "
+            f"{m['ply']} cost about {m['cp_loss']} pawns.{best_body} The fix is to "
+            f"pause before committing and check what the move leaves behind."
+        )
+
+    # Build a drill that references this game's actual key moment.
+    if moments:
+        top = moments[0]
+        if top.get("best"):
+            drill_steps = (
+                f"**{habit} — 15 minutes**\n\n"
+                f"1. Set up the position just before {top['san']} in this game.\n"
+                f"2. Name the engine's alternative ({top['best']}) and say out loud why it's safer.\n"
+                f"3. Repeat the scan on the other moments below before the next report.\n\n"
+                f"{drill}"
+            )
+        else:
+            drill_steps = (
+                f"**{habit} — 15 minutes**\n\n"
+                f"1. Set up the position just before {top['san']} in this game.\n"
+                f"2. Name what the move leaves undefended.\n"
+                f"3. Write down the safer alternative.\n\n"
+                f"{drill}"
+            )
+    else:
+        drill_steps = (
+            f"**{habit} — 15 minutes**\n\n"
+            f"1. Re-play each key mistake moment on a board.\n"
+            f"2. Name what the move leaves behind.\n"
+            f"3. Write down the safer alternative.\n\n"
+            f"{drill}"
+        )
+
+    short_top = ""
+    if moments:
+        m = moments[0]
+        short_top = (
+            f" The key moment: {m['san']}"
+            + (f" instead of {m['best']}" if m.get("best") else "")
+            + f" vs {m['opponent']}."
+        )
+
+    return "\n\n---\n\n".join([
+        f"# {kid_name} — Game Set Report",
+        f"{game_count} Online Games · {platform} · {date_range}",
+        (
+            "## Short version"
+        ),
+        (
+            f"{kid_name} played {game_count} game{'s' if game_count != 1 else ''} this set — "
+            f"{wins} win{'s' if wins != 1 else ''}, {losses} loss{'es' if losses != 1 else ''}, "
+            f"{draws} draw{'s' if draws != 1 else ''}. The most recurring pattern was "
+            f"\"{habit}\".{short_top} The work this week is one simple habit: {drill}"
+        ),
+        (
+            f"**Baseline read:** {game_count} recent online games  \n"
+            f"**Pattern found:** {habit}  \n"
+            f"**Seen in this game:** {seen_line}  \n"
+            f"**The habit to train:** {drill}  \n"
+            "**Tracking:** Begins with this report"
+        ),
+        (
+            "## First, the wide view"
+        ),
+        (
+            f"Before this set we reviewed {game_count} of {kid_name}'s recent games to "
+            f"understand how {kid_name} plays. The most consistent cost is \"{habit}\" — "
+            "a pattern that shows up move after move, not a lack of talent."
+        ),
+        (
+            "## Now, the games you sent us"
+        ),
+        (
+            f"This set covers {game_count} games ({platform}, {date_range}). "
+            f"Results: {wins} win{'s' if wins != 1 else ''}, "
+            f"{losses} loss{'es' if losses != 1 else ''}, "
+            f"{draws} draw{'s' if draws != 1 else ''}.\n\n"
+            f"Opponents:\n\n{opponent_lines}"
+        ),
+        (
+            "## What's working"
+        ),
+        (
+            "**Converting wins.** When the position is good, the finish is clean — "
+            f"{kid_name} converted {wins} winning games without giving the point back."
+        ),
+        (
+            f"## The pattern: {habit}"
+        ),
+        (
+            "The baseline showed this, and it's the pattern to track going forward."
+        ),
+        *moment_blocks,
+        (
+            "## The recurring weakness across the set"
+        ),
+        (
+            f"\"{habit}\" is the habit that costs the most points. The fix is simple in "
+            "concept: before every move, take one second to check the move's consequences."
+        ),
+        (
+            "## One drill for this week"
+        ),
+        (
+            drill_steps
+        ),
+        (
+            "## For your coach"
+        ),
+        (
+            f"Pre-lesson brief: {kid_name}'s recurring leak is \"{habit}\". "
+            + (
+                " It showed up in: " + "; ".join(
+                    f"{m['san']} (ply {m['ply']}) vs {m['opponent']}" for m in moments[:3]
+                ) + "."
+                if moments else ""
+            )
+            + " At the start of the next lesson, show a few middlegame positions and ask "
+            f"{kid_name} to name the danger squares before moving — ten focused minutes "
+            "will sharpen the reflex."
+        ),
+        (
+            f"Questions? Email [{SITE_CONTACT}](mailto:{SITE_CONTACT})  \n"
+            f"— The {SITE_NAME} team"
+        ),
+        (
+            "*One more thing: online games show habits, but tournament games are where "
+            "they cost points. Photograph a scoresheet or paste a PGN on the Analyze "
+            "page and the next report reads the real over-the-board play.*"
+        ),
+    ])
+
 
 def generate_report(kid_name: str, habit: str, game_count: int,
-                    api_key: Optional[str] = None) -> str:
-    """Generate a coach-style summary for a kid.
+                    api_key: Optional[str] = None,
+                    context: Optional[Dict[str, Any]] = None) -> str:
+    """Generate a full markdown coach report for a kid.
 
     Uses the configured LLM provider (DeepSeek by default, or LibreChat — see
-    llm.py); otherwise returns a deterministic fallback summary.
+    llm.py); otherwise returns a deterministic fallback report.
     """
     drill = _DRILLS.get(habit, _DEFAULT_DRILL)
-    fallback = (
-        f"{kid_name} played {game_count} game{'s' if game_count != 1 else ''} in this "
-        f"report period. The most recurring pattern was \"{habit}\". Suggested drill: "
-        f"{drill}"
-    )
+    ctx = context or {
+        "platform": "online",
+        "date_range": "recent games",
+        "wins": 0,
+        "losses": 0,
+        "draws": 0,
+        "games_brief": [],
+        "moments": [],
+        "notes": "",
+        "answers": [],
+    }
+    fallback = _build_markdown_report(kid_name, habit, game_count, drill, ctx)
 
     try:
         text = llm.complete(
-            "You write encouraging, specific coach reports for the parents "
-            "of junior chess players. Keep it warm, concrete and under 120 words.",
-            f"Kid: {kid_name}. Games reviewed: {game_count}. "
-            f"Most recurring habit: {habit}. Suggested drill: {drill}. "
-            f"Write a short parent-facing report.",
+            _REPORT_SYSTEM,
+            _report_user_prompt(kid_name, habit, game_count, drill, ctx),
             api_key=api_key,
         )
-        return text or fallback
+        cleaned = (text or "").strip()
+        return cleaned or fallback
     except Exception:
         return fallback
 
@@ -456,14 +895,31 @@ def _open_engine(path: str = STOCKFISH_PATH) -> chess.engine.SimpleEngine:
     return chess.engine.SimpleEngine.popen_uci(path)
 
 
+def _short_version(markdown: str) -> str:
+    """Pull the '## Short version' paragraph out of a generated report."""
+    marker = "## Short version"
+    idx = markdown.find(marker)
+    if idx == -1:
+        return markdown.strip().splitlines()[0] if markdown.strip() else ""
+    rest = markdown[idx + len(marker):]
+    parts = rest.split("\n---")
+    para = " ".join(
+        line.strip() for line in parts[0].splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    )
+    return para or markdown.strip().splitlines()[0]
+
+
 def run_analysis(platform: str, username: str, kid_name: str = "Player",
                  max_games: int = 50, since_days: int = 30,
-                 engine: Optional[chess.engine.SimpleEngine] = None) -> Dict[str, Any]:
+                 engine: Optional[chess.engine.SimpleEngine] = None,
+                 notes: Optional[str] = None,
+                 answers: Optional[List[str]] = None) -> Dict[str, Any]:
     """Run the full intake pipeline and return a structured result.
 
-    The result contains the summary text, top recurring habit, suggested drill,
-    total points lost and a per-game analysis list, ready to be persisted by
-    the web app.
+    The result contains the full markdown report, a short summary text, the top
+    recurring habit, suggested drill, total points lost and a per-game analysis
+    list, ready to be persisted by the web app.
     """
     mcp_used = False
     games = _try_mcp_fetch(username, platform, max_games)
@@ -497,7 +953,10 @@ def run_analysis(platform: str, username: str, kid_name: str = "Player",
     habits = aggregate_habits(reports)
     top_habit = habits[0]["habit"] if habits else "Piece safety"
     points_lost = round(sum(r.get("points_lost", 0.0) for r in reports), 2)
-    summary = generate_report(kid_name, top_habit, len(reports))
+    context = build_report_context(
+        reports, platform, username, top_habit, notes=notes, answers=answers
+    )
+    markdown = generate_report(kid_name, top_habit, len(reports), context=context)
 
     result: Dict[str, Any] = {
         "kid_name": kid_name,
@@ -505,7 +964,8 @@ def run_analysis(platform: str, username: str, kid_name: str = "Player",
         "username": username,
         "game_count": len(reports),
         "habit": top_habit,
-        "summary_text": summary,
+        "summary_text": _short_version(markdown),
+        "report_markdown": markdown,
         "drill": _DRILLS.get(top_habit, _DEFAULT_DRILL),
         "points_lost": points_lost,
         "games": reports,

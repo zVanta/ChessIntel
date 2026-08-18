@@ -34,6 +34,8 @@ export interface AnalyzeRequestPayload {
   kid_name: string;
   max_games: number;
   since_days: number;
+  notes?: string;
+  answers?: string[];
 }
 
 /** Run the full intake pipeline via the FastAPI service. */
@@ -41,9 +43,32 @@ export async function analyzeViaService(payload: AnalyzeRequestPayload): Promise
   return postJson<AnalysisResult>("/analyze", payload);
 }
 
-/** Analyze a single PGN (scoresheet path) via the FastAPI service. */
-export async function analyzePgnViaService(pgn: string, kidName: string): Promise<AnalysisResult> {
-  return postJson<AnalysisResult>("/analyze-pgn", { pgn, kid_name: kidName });
+/** Analyze a single PGN (scoresheet / paste path) via the FastAPI service. */
+export async function analyzePgnViaService(
+  pgn: string,
+  kidName: string,
+  notes?: string,
+  answers?: string[]
+): Promise<AnalysisResult> {
+  return postJson<AnalysisResult>("/analyze-pgn", {
+    pgn,
+    kid_name: kidName,
+    notes,
+    answers,
+  });
+}
+
+/** Answer a free-form chess question (no game required). */
+export async function askViaService(
+  question: string,
+  kidName?: string,
+  notes?: string
+): Promise<{ answer: string }> {
+  return postJson<{ answer: string }>("/ask", {
+    question,
+    kid_name: kidName || "Player",
+    notes,
+  });
 }
 
 /** Convert a scoresheet photo (bytes) to PGN via the FastAPI service. */

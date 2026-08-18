@@ -29,6 +29,14 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Source+Sans+3:wght@400;600;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body className="min-h-screen">
         <header className="border-b border-slate-200 bg-white">
           <nav className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
@@ -36,6 +44,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               {SITE_NAME}
             </Link>
             <div className="flex items-center gap-4 text-sm font-medium text-slate-600">
+              <Link href="/analyze" className="hover:text-slate-900">
+                Analyze
+              </Link>
               <Link href="/dashboard" className="hover:text-slate-900">
                 Dashboard
               </Link>

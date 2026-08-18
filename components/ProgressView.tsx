@@ -115,7 +115,9 @@ export default function ProgressView({ kidId }: Props) {
                 <div>
                   <p className="text-xs text-slate-500">{report.created_at}</p>
                   <h3 className="mt-1 text-base font-semibold text-slate-800">
-                    {report.recurring_habit}
+                    <Link href={`/report/${report.id}`} className="hover:text-emerald-700">
+                      {report.recurring_habit}
+                    </Link>
                   </h3>
                   <p className="mt-1 text-sm text-slate-600">{report.summary_text}</p>
                   <div className="mt-2 flex flex-wrap gap-2 text-xs">
@@ -126,6 +128,12 @@ export default function ProgressView({ kidId }: Props) {
                       Drill: {report.drill}
                     </span>
                   </div>
+                  <Link
+                    href={`/report/${report.id}`}
+                    className="mt-3 inline-block text-sm font-medium text-emerald-700 underline hover:text-emerald-800"
+                  >
+                    View full report →
+                  </Link>
                 </div>
 
                 <div className="shrink-0">

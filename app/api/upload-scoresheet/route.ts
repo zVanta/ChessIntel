@@ -37,12 +37,28 @@ export async function POST(req: Request) {
   }
   const buffer = Buffer.from(await image.arrayBuffer());
 
+  const notesRaw = form.get("notes");
+  const notes =
+    typeof notesRaw === "string" && notesRaw.trim() ? notesRaw.trim() : undefined;
+  let answers: string[] | undefined;
+  const answersRaw = form.get("answers");
+  if (typeof answersRaw === "string" && answersRaw.trim()) {
+    try {
+      const parsed = JSON.parse(answersRaw);
+      if (Array.isArray(parsed)) {
+        answers = parsed.map((a) => String(a ?? "").trim()).filter(Boolean);
+      }
+    } catch {
+      answers = undefined;
+    }
+  }
+
   try {
     const pgn = await ocrScoresheet(buffer, kid.name);
     if (!pgn || !pgn.trim()) {
       return NextResponse.json({ error: "No moves could be read from the scoresheet." }, { status: 422 });
     }
-    const result = await analyzePgnViaService(pgn, kid.name);
+    const result = await analyzePgnViaService(pgn, kid.name, notes, answers);
     const persisted = persistAnalysis(kidId, result);
     return NextResponse.json(
       {

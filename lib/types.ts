@@ -74,6 +74,7 @@ export interface AnalysisResult {
   game_count: number;
   habit: string;
   summary_text: string;
+  report_markdown?: string;
   drill: string;
   points_lost: number;
   games: AnalysisGame[];

@@ -9,3 +9,168 @@ html {
 body {
   @apply bg-slate-50 text-slate-900;
 }
+
+/* ------------------------------------------------------------------ */
+/* Report document — a clean, print-friendly coaching report.          */
+/* Display font: EB Garamond. Body font: Source Sans 3.                */
+/* ------------------------------------------------------------------ */
+
+.report-shell {
+  @apply mx-auto max-w-2xl;
+}
+
+.report-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 12px;
+}
+
+.report-doc {
+  background: #ffffff;
+  border: 1px solid rgb(226 232 240);
+  border-radius: 10px;
+  padding: 28px 32px;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+}
+
+.report-brand-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-family: "EB Garamond", Georgia, serif;
+}
+
+.report-brand-wordmark {
+  font-size: 20px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.report-brand-glyph {
+  color: #0f766e;
+  margin-right: 2px;
+}
+
+.report-brand-url {
+  font-size: 13px;
+  color: #64748b;
+  letter-spacing: 0.02em;
+}
+
+.report-brand-divider {
+  border: 0;
+  border-top: 1px solid #e2e8f0;
+  margin: 14px 0 24px;
+}
+
+.report-brand-divider--footer {
+  margin: 24px 0 12px;
+}
+
+.report-brand-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: "EB Garamond", Georgia, serif;
+  font-size: 14px;
+  color: #475569;
+}
+
+.report-brand-tagline {
+  font-size: 12px;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.report-date {
+  font-size: 14px;
+  color: #64748b;
+  margin: 0 0 6px;
+}
+
+.report-body {
+  font-family: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  color: #1e293b;
+}
+
+.report-body h1 {
+  font-family: "EB Garamond", Georgia, serif;
+  font-size: 28px;
+  line-height: 1.2;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0 0 6px;
+}
+
+.report-body h2 {
+  font-family: "EB Garamond", Georgia, serif;
+  font-size: 21px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 20px 0 8px;
+}
+
+.report-body h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 16px 0 4px;
+}
+
+.report-body p {
+  margin: 0 0 12px;
+}
+
+.report-body hr {
+  border: 0;
+  border-top: 1px solid #e2e8f0;
+  margin: 22px 0;
+}
+
+.report-body ul,
+.report-body ol {
+  margin: 0 0 14px;
+  padding-left: 22px;
+}
+
+.report-body li {
+  margin-bottom: 4px;
+}
+
+.report-body ol {
+  list-style-type: decimal;
+}
+
+.report-body ul {
+  list-style-type: disc;
+}
+
+.report-body a {
+  color: #0f766e;
+  text-decoration: underline;
+}
+
+.report-body strong {
+  font-weight: 700;
+}
+
+@media print {
+  .report-toolbar {
+    display: none;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  .report-doc {
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+  }
+}
