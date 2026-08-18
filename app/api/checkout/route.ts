@@ -11,21 +11,36 @@ export async function POST() {
   const user = getSessionUser();
   if (!user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
-  const stripe = getStripe();
-  const priceId = getStripePriceId();
+  let stripe: ReturnType<typeof getStripe>;
+  let priceId: string;
+  try {
+    stripe = getStripe();
+    priceId = getStripePriceId();
+  } catch {
+    return NextResponse.json(
+      { error: "Billing is not configured yet. Set STRIPE_SECRET_KEY and STRIPE_PRICE_ID." },
+      { status: 503 }
+    );
+  }
+
   const origin = new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").origin;
 
-  const session = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    line_items: [{ price: priceId, quantity: 1 }],
-    client_reference_id: `user:${user.id}`,
-    metadata: { type: "fund", userId: String(user.id) },
-    subscription_data: {
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      line_items: [{ price: priceId, quantity: 1 }],
+      client_reference_id: `user:${user.id}`,
       metadata: { type: "fund", userId: String(user.id) },
-    },
-    success_url: `${origin}/profile?funding=success`,
-    cancel_url: `${origin}/profile?funding=canceled`,
-  });
+      subscription_data: {
+        metadata: { type: "fund", userId: String(user.id) },
+      },
+      success_url: `${origin}/profile?funding=success`,
+      cancel_url: `${origin}/profile?funding=canceled`,
+    });
 
-  return NextResponse.json({ url: session.url, creditsPerMonth: getFundingCredits() });
+    return NextResponse.json({ url: session.url, creditsPerMonth: getFundingCredits() });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Checkout failed.";
+    return NextResponse.json({ error: `Checkout could not be created: ${message}` }, { status: 502 });
+  }
 }
