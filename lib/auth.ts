@@ -3,8 +3,24 @@ import { cookies } from "next/headers";
 import { getUserById } from "./db";
 import type { User } from "./types";
 
-const SESSION_COOKIE = "cc_session";
+export const SESSION_COOKIE = "cc_session";
 const AUTH_SECRET = process.env.AUTH_SECRET || "checkmate-coach-dev-secret-change-me";
+
+export function sessionCookieOptions(): {
+  httpOnly: boolean;
+  sameSite: "lax";
+  secure: boolean;
+  path: string;
+  maxAge: number;
+} {
+  return {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30,
+  };
+}
 
 function sign(payload: string): string {
   return createHmac("sha256", AUTH_SECRET).update(payload).digest("hex");
@@ -25,22 +41,6 @@ function verifySessionToken(token: string): number | null {
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
   const userId = Number(payload);
   return Number.isInteger(userId) && userId > 0 ? userId : null;
-}
-
-/** Set the session cookie (route handlers only — cookies() is mutable there). */
-export function setSessionCookie(userId: number): void {
-  const token = createSessionToken(userId);
-  cookies().set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 30,
-  });
-}
-
-export function clearSessionCookie(): void {
-  cookies().set(SESSION_COOKIE, "", { maxAge: 0, path: "/" });
 }
 
 /** Resolve the currently signed-in user from the request cookie, if any. */

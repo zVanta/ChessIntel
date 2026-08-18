@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getUserByEmail } from "@/lib/db";
 import { verifyPassword } from "@/lib/password";
-import { setSessionCookie } from "@/lib/auth";
+import { createSessionToken, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth";
 
 export async function POST(req: Request) {
   let body: unknown;
@@ -12,14 +12,20 @@ export async function POST(req: Request) {
   }
   const input = (body ?? {}) as Record<string, unknown>;
 
-  const email = typeof input.email === "string" ? input.email.trim().toLowerCase() : "";
-  const password = typeof input.password === "string" ? input.password : "";
+  try {
+    const email = typeof input.email === "string" ? input.email.trim().toLowerCase() : "";
+    const password = typeof input.password === "string" ? input.password : "";
 
-  const user = getUserByEmail(email);
-  if (!user || !verifyPassword(password, user.password_hash)) {
-    return NextResponse.json({ error: "Incorrect email or password." }, { status: 401 });
+    const user = getUserByEmail(email);
+    if (!user || !verifyPassword(password, user.password_hash)) {
+      return NextResponse.json({ error: "Incorrect email or password." }, { status: 401 });
+    }
+
+    const res = NextResponse.json({ user: { id: user.id, email: user.email, role: user.role, credits: user.credits } });
+    res.cookies.set(SESSION_COOKIE, createSessionToken(user.id), sessionCookieOptions());
+    return res;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Login failed.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  setSessionCookie(user.id);
-  return NextResponse.json({ user: { id: user.id, email: user.email, role: user.role, credits: user.credits } });
 }

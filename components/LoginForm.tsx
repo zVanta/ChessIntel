@@ -24,8 +24,15 @@ export default function LoginForm() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Authentication failed.");
+      let data: { error?: string } = {};
+      try {
+        data = await res.json();
+      } catch {
+        // Empty/non-JSON response — fall through with a generic message.
+      }
+      if (!res.ok) {
+        throw new Error(data.error || `Request failed (status ${res.status}). Please try again.`);
+      }
       router.push(next);
       router.refresh();
     } catch (err) {
