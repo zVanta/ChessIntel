@@ -153,8 +153,12 @@ export async function runAnalysis(
     // Docker web image has no Python chess stack, so in production surface the
     // real error instead of a confusing "No module named 'chess'".
     if (process.env.NODE_ENV === "production") {
+      const cause = (err as { cause?: { code?: string } }).cause;
+      const detail = err instanceof Error ? err.message : String(err);
       throw new Error(
-        `Python service is unreachable: ${err instanceof Error ? err.message : String(err)}`
+        cause?.code
+          ? `Python service is unreachable (${cause.code}): ${detail}`
+          : `Python service is unreachable: ${detail}`
       );
     }
     return analyzeWithCli(payload.platform, payload.username, payload.kid_name, payload.max_games);
