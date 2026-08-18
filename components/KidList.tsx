@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { KidWithMeta } from "@/lib/types";
+import { pollJob } from "@/lib/poll";
 import ScoreSheetUpload from "./ScoreSheetUpload";
 
 export default function KidList() {
@@ -60,8 +61,20 @@ export default function KidList() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Analysis failed.");
-      router.push(`/progress?kid=${kid.id}`);
-      router.refresh();
+      pollJob(
+        data.jobId,
+        (result) => {
+          router.push(`/report/${result.report.id}`);
+          router.refresh();
+        },
+        (msg) => {
+          setActionError({
+            kidId: kid.id,
+            message: msg,
+          });
+          setBusyKid(null);
+        }
+      );
     } catch (err) {
       setActionError({
         kidId: kid.id,

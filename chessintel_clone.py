@@ -63,7 +63,7 @@ STOCKFISH_PATH: str = os.environ.get("STOCKFISH_PATH", "stockfish")
 # chess.com requires a descriptive User-Agent; the requests default is 403'd.
 USER_AGENT: str = "CheckmateCoach/1.0 (https://github.com/zVanta/ChessIntel)"
 
-ANALYSIS_DEPTH: int = 18
+ANALYSIS_DEPTH: int = int(os.environ.get("ANALYSIS_DEPTH", "14"))
 BLUNDER_THRESHOLD_CP: int = 250
 
 LICHESS_GAMES_URL: str = "https://lichess.org/api/games/user/{username}"

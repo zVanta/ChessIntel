@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { pollJob } from "@/lib/poll";
 
 interface Props {
   kidId: number;
@@ -33,12 +34,21 @@ export default function ScoreSheetUpload({ kidId, kidName, onDone }: Props) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload failed.");
-      setSuccess(true);
-      if (fileRef.current) fileRef.current.value = "";
-      onDone?.();
+      pollJob(
+        data.jobId,
+        () => {
+          setSuccess(true);
+          if (fileRef.current) fileRef.current.value = "";
+          setUploading(false);
+          onDone?.();
+        },
+        (msg) => {
+          setError(msg);
+          setUploading(false);
+        }
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed.");
-    } finally {
       setUploading(false);
     }
   }

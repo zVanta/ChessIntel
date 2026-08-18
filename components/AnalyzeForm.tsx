@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { KidWithMeta } from "@/lib/types";
+import { pollJob } from "@/lib/poll";
 
 const MODES = [
   { id: "scoresheet", label: "Scoresheet photo" },
@@ -102,8 +103,17 @@ export default function AnalyzeForm() {
       const res = await fetch("/api/upload-scoresheet", { method: "POST", body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload failed.");
-      router.push(`/report/${data.report.id}`);
-      router.refresh();
+      pollJob(
+        data.jobId,
+        (result) => {
+          router.push(`/report/${result.report.id}`);
+          router.refresh();
+        },
+        (msg) => {
+          setError(msg);
+          setBusy(false);
+        }
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed.");
       setBusy(false);
@@ -122,8 +132,17 @@ export default function AnalyzeForm() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Analysis failed.");
-      router.push(`/report/${data.report.id}`);
-      router.refresh();
+      pollJob(
+        data.jobId,
+        (result) => {
+          router.push(`/report/${result.report.id}`);
+          router.refresh();
+        },
+        (msg) => {
+          setError(msg);
+          setBusy(false);
+        }
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Analysis failed.");
       setBusy(false);
@@ -143,8 +162,17 @@ export default function AnalyzeForm() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "PGN analysis failed.");
-      router.push(`/report/${data.report.id}`);
-      router.refresh();
+      pollJob(
+        data.jobId,
+        (result) => {
+          router.push(`/report/${result.report.id}`);
+          router.refresh();
+        },
+        (msg) => {
+          setError(msg);
+          setBusy(false);
+        }
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "PGN analysis failed.");
       setBusy(false);

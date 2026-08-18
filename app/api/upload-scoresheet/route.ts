@@ -3,6 +3,7 @@ import { getKid } from "@/lib/db";
 import { canGenerateReport } from "@/lib/billing";
 import { analyzePgnViaService, ocrScoresheet } from "@/lib/python";
 import { persistAnalysis } from "@/lib/persist";
+import { completeJob, createJob, failJob } from "@/lib/jobs";
 
 export async function POST(req: Request) {
   let form: FormData;
@@ -53,23 +54,24 @@ export async function POST(req: Request) {
     }
   }
 
-  try {
-    const pgn = await ocrScoresheet(buffer, kid.name);
-    if (!pgn || !pgn.trim()) {
-      return NextResponse.json({ error: "No moves could be read from the scoresheet." }, { status: 422 });
-    }
-    const result = await analyzePgnViaService(pgn, kid.name, notes, answers);
-    const persisted = persistAnalysis(kidId, result);
-    return NextResponse.json(
-      {
+  const job = createJob();
+  void (async () => {
+    try {
+      const pgn = await ocrScoresheet(buffer, kid.name);
+      if (!pgn || !pgn.trim()) {
+        throw new Error("No moves could be read from the scoresheet.");
+      }
+      const result = await analyzePgnViaService(pgn, kid.name, notes, answers);
+      const persisted = persistAnalysis(kidId, result);
+      completeJob(job.id, {
         report: persisted.report,
         followup: persisted.followup,
         game_count: persisted.games.length,
-      },
-      { status: 201 }
-    );
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Scoresheet processing failed.";
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+      });
+    } catch (err) {
+      failJob(job.id, err instanceof Error ? err.message : "Scoresheet processing failed.");
+    }
+  })();
+
+  return NextResponse.json({ jobId: job.id }, { status: 202 });
 }
