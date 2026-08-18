@@ -265,6 +265,7 @@ export default function AnalyzeForm() {
               ref={fileRef}
               type="file"
               accept="image/*"
+              capture="environment"
               className="mt-3 block w-full text-sm text-slate-600 file:mr-2 file:rounded file:border-0 file:bg-slate-200 file:px-3 file:py-1.5 file:text-sm file:font-medium"
             />
           </div>

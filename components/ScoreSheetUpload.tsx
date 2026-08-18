@@ -63,6 +63,7 @@ export default function ScoreSheetUpload({ kidId, kidName, onDone }: Props) {
           ref={fileRef}
           type="file"
           accept="image/*"
+          capture="environment"
           className="block w-full text-xs text-slate-600 file:mr-2 file:rounded file:border-0 file:bg-slate-200 file:px-3 file:py-1.5 file:text-xs file:font-medium"
         />
         <button

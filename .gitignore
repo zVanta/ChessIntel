@@ -38,4 +38,5 @@ yarn-error.log*
 /android/twa-project/
 /android/local-server/
 /android/*.apk
+!/android/checkmate-coach.apk
 /android/*.keystore

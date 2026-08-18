@@ -363,23 +363,25 @@ def aggregate_habits(reports: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 _DRILLS: Dict[str, str] = {
     "Opening preparation": (
-        "Before each game, rehearse your first ten moves against your two most "
-        "common openings and write down the move you would play before checking "
-        "the book answer."
+        "Rehearse your first ten moves in your two most common openings and write "
+        "them down before checking the book — you pass when you nail all ten from "
+        "memory."
     ),
     "Piece safety": (
-        "Before every move, pause and scan for undefended pieces on both sides. "
-        "Do 10 'hang check' puzzles a day until the scan becomes automatic."
+        "Before every move, do a one-second 'hang check' for undefended pieces on "
+        "both sides. Do 10 hang-check puzzles a day until the scan is automatic."
     ),
     "Endgame technique": (
-        "Practice king-and-pawn endings and simple rook endings against the "
-        "engine until you can win a winning position three times in a row."
+        "Practice king-and-pawn endings and simple rook endings against the engine "
+        "until you can win the same winning position three times in a row without "
+        "slipping."
     ),
 }
 
 _DEFAULT_DRILL = (
-    "Review the games from this report and re-play the key mistake moments on a "
-    "board, writing down a safer alternative for each one."
+    "Re-play the key mistake moments from this report on a board and write down a "
+    "safer alternative for each one — you pass when you can spot the fix in under "
+    "ten seconds."
 )
 
 # Report document branding. Kept separate from any third-party product name —
@@ -507,12 +509,24 @@ def build_report_context(reports: List[Dict[str, Any]], platform: str,
 
 
 _REPORT_SYSTEM = (
-    "You are the coach-writer for {site_name}, a service that turns a junior "
-    "chess player's games into plain-language coaching reports. You write warm, "
-    "concrete, parent- and kid-friendly prose in Markdown. Follow the section "
-    "template exactly and never invent facts beyond the context you are given; "
-    "when a detail is unknown, write around it. Keep the whole report under "
-    "about 650 words and never include raw PGN or engine JSON."
+    "You are the head coach at {site_name} — the chess coach who makes kids "
+    "better AND makes them laugh. You write like a favorite chess streamer "
+    "turned coach: energetic, punchy, specific, and genuinely encouraging. You "
+    "never talk down to kids and you never write generic filler.\n\n"
+    "Rules:\n"
+    "- Be concrete: every claim points at a real move from the facts (the move "
+    "they played, the move the engine wanted, the opponent, the cost in pawns).\n"
+    "- Every 'Moment' section ends with a bold 'Fix:' line — one check the kid "
+    "can actually run in their next game.\n"
+    "- Every drill has exactly 3 steps that can be done in 15 minutes, plus a "
+    "bold 'Got it when:' line with a measurable check (e.g. '3 in a row').\n"
+    "- Be fun: short punchy sentences, the occasional exclamation, real chess "
+    "slang ('free piece', 'the knight went sightseeing', 'pawn grab'), and real "
+    "hype for what they did well. No filler like 'chess is a game of...'.\n"
+    "- Write so a kid and their parent can both follow it.\n"
+    "- Never invent moves, names, ratings, or dates; stick to the facts given.\n"
+    "- Write in Markdown, keep every heading and the '---' rules exactly as "
+    "given, and fill the prose between them. Keep the report under ~700 words."
 ).replace("{site_name}", SITE_NAME)
 
 
@@ -558,33 +572,39 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
         "",
         "## Short version",
         "",
-        "(2–4 sentences: the set's results, the one pattern found, and the habit to build.)",
+        "(2–4 punchy sentences: open with a hook about this set, name the one "
+        "pattern, and name the habit to build. Make it feel like a coach hyping "
+        "their player before a training session.)",
         "",
         "---",
         "",
         "**Baseline read:** {count} recent online games  ",
         "**Pattern found:** {habit}  ",
         "**Seen in this game:** Yes — <move> vs <opponent> (or “not this set” if it didn't fire)  ",
-        "**The habit to train:** <one concrete sentence>  ",
+        "**The habit to train:** <one punchy, concrete sentence>  ",
         "**Tracking:** Begins with this report  ",
         "",
         "---",
         "",
         "## First, the wide view",
         "",
-        "(Two short paragraphs: the player's style/strengths, then where points slip away.)",
+        "(Two short paragraphs: what the player is genuinely good at, then where "
+        "points slip away. Name real games/moves from the facts, and say it with "
+        "energy — a scouting report, not a form letter.)",
         "",
         "---",
         "",
         "## Now, the games you sent us",
         "",
-        "(One paragraph on this set's results and time controls.)",
+        "(One paragraph on this set's results and time controls — call out the "
+        "best win and the loss that mattered.)",
         "",
         "---",
         "",
         "## What's working",
         "",
-        "(Two or three bold-led short paragraphs naming real strengths, with game examples where the context supports it.)",
+        "(Two or three bold-led short paragraphs naming real strengths with game "
+        "examples, written like a coach high-fiving the kid.)",
         "",
         "---",
         "",
@@ -594,23 +614,34 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
         "",
         "### Moment 1 — <bad move> instead of <better move> (vs <opponent>)",
         "",
-        "(Explain the position, what was played, what the engine preferred, and why it matters.)",
+        "(Set the scene in one line, what was played, what the engine wanted, "
+        "and why it hurt — then end with a bold 'Fix:' line: the exact check to "
+        "run next game.)",
+        "",
+        "### Moment 2 — <bad move> instead of <better move> (vs <opponent>)",
+        "",
+        "(Same format as Moment 1, from another game in the facts. Skip this "
+        "heading entirely if there is only one moment.)",
         "",
         "---",
         "",
         "## The recurring weakness across the set",
         "",
-        "(Summarise the pattern across the set and the simple fix.)",
+        "(Summarise the pattern across the set in plain language and name the "
+        "simple fix — one sentence the kid can repeat to themselves.)",
         "",
         "---",
         "",
         "## One drill for this week",
         "",
-        "**<Drill title>**",
+        "**<Drill title — make it sound fun>**",
         "",
-        "1. <step one>",
-        "2. <step two>",
-        "3. <step three>",
+        "1. <step one — concrete, tied to their actual moves>",
+        "2. <step two — concrete>",
+        "3. <step three — concrete>",
+        "",
+        "**Got it when:** <measurable check, e.g. '3 in a row' or 'under 10 "
+        "seconds each'>",
         "",
         "---",
         "",
@@ -672,12 +703,19 @@ def _build_markdown_report(kid_name: str, habit: str, game_count: int,
     moment_blocks = []
     for i, m in enumerate(moments[:3], 1):
         best_heading = f" instead of {m['best']}" if m.get("best") else ""
-        best_body = f" The engine preferred {m['best']}." if m.get("best") else ""
+        best_body = f" The engine wanted {m['best']}." if m.get("best") else ""
+        fix_line = (
+            f"**Fix:** before you play a move like {m['san']}, stop and name what it "
+            f"leaves behind — then find {m['best']}." if m.get("best") else
+            f"**Fix:** before you play {m['san']}, pause and name the piece it leaves "
+            "undefended."
+        )
         moment_blocks.append(
             f"### Moment {i} — {m['san']}{best_heading} (vs {m['opponent']})\n\n"
             f"In the {m['phase']} against {m['opponent']}, {m['san']} at ply "
-            f"{m['ply']} cost about {m['cp_loss']} pawns.{best_body} The fix is to "
-            f"pause before committing and check what the move leaves behind."
+            f"{m['ply']} cost about {m['cp_loss']} pawns.{best_body} That's the "
+            f"kind of move that feels fine and then quietly loses the game.\n\n"
+            f"{fix_line}"
         )
 
     # Build a drill that references this game's actual key moment.
@@ -685,26 +723,29 @@ def _build_markdown_report(kid_name: str, habit: str, game_count: int,
         top = moments[0]
         if top.get("best"):
             drill_steps = (
-                f"**{habit} — 15 minutes**\n\n"
+                f"**{habit} — the 15-minute sharpener**\n\n"
                 f"1. Set up the position just before {top['san']} in this game.\n"
-                f"2. Name the engine's alternative ({top['best']}) and say out loud why it's safer.\n"
-                f"3. Repeat the scan on the other moments below before the next report.\n\n"
+                f"2. Find the engine's move ({top['best']}) and say out loud why it's safer.\n"
+                f"3. Do the same for the other moments below.\n\n"
+                f"**Got it when:** you name the safer move in under 10 seconds, 3 in a row.\n\n"
                 f"{drill}"
             )
         else:
             drill_steps = (
-                f"**{habit} — 15 minutes**\n\n"
+                f"**{habit} — the 15-minute sharpener**\n\n"
                 f"1. Set up the position just before {top['san']} in this game.\n"
                 f"2. Name what the move leaves undefended.\n"
                 f"3. Write down the safer alternative.\n\n"
+                f"**Got it when:** you spot the hang before you move, 3 times in a row.\n\n"
                 f"{drill}"
             )
     else:
         drill_steps = (
-            f"**{habit} — 15 minutes**\n\n"
+            f"**{habit} — the 15-minute sharpener**\n\n"
             f"1. Re-play each key mistake moment on a board.\n"
             f"2. Name what the move leaves behind.\n"
             f"3. Write down the safer alternative.\n\n"
+            f"**Got it when:** you can explain the fix in one sentence.\n\n"
             f"{drill}"
         )
 
@@ -726,8 +767,8 @@ def _build_markdown_report(kid_name: str, habit: str, game_count: int,
         (
             f"{kid_name} played {game_count} game{'s' if game_count != 1 else ''} this set — "
             f"{wins} win{'s' if wins != 1 else ''}, {losses} loss{'es' if losses != 1 else ''}, "
-            f"{draws} draw{'s' if draws != 1 else ''}. The most recurring pattern was "
-            f"\"{habit}\".{short_top} The work this week is one simple habit: {drill}"
+            f"{draws} draw{'s' if draws != 1 else ''}. The big pattern: \"{habit}\"."
+            f"{short_top} This week is about one simple habit: {drill}"
         ),
         (
             f"**Baseline read:** {game_count} recent online games  \n"
@@ -740,9 +781,11 @@ def _build_markdown_report(kid_name: str, habit: str, game_count: int,
             "## First, the wide view"
         ),
         (
-            f"Before this set we reviewed {game_count} of {kid_name}'s recent games to "
-            f"understand how {kid_name} plays. The most consistent cost is \"{habit}\" — "
-            "a pattern that shows up move after move, not a lack of talent."
+            f"Before this set we reviewed {game_count} of {kid_name}'s recent games. "
+            f"The good news: the wins are real and the finishes are clean. The thing "
+            f"costing the most points is \"{habit}\" — and it shows up move after move, "
+            "which means it's a habit, not a talent ceiling. Habits are fixable, and "
+            "that's exactly what we train this week."
         ),
         (
             "## Now, the games you sent us"
@@ -759,7 +802,9 @@ def _build_markdown_report(kid_name: str, habit: str, game_count: int,
         ),
         (
             "**Converting wins.** When the position is good, the finish is clean — "
-            f"{kid_name} converted {wins} winning games without giving the point back."
+            f"{kid_name} converted {wins} winning game{'s' if wins != 1 else ''} without "
+            "giving the point back. That's a real skill, and it's the foundation we "
+            "build on."
         ),
         (
             f"## The pattern: {habit}"
@@ -772,8 +817,9 @@ def _build_markdown_report(kid_name: str, habit: str, game_count: int,
             "## The recurring weakness across the set"
         ),
         (
-            f"\"{habit}\" is the habit that costs the most points. The fix is simple in "
-            "concept: before every move, take one second to check the move's consequences."
+            f"\"{habit}\" is the habit that costs the most points. The fix is simple "
+            "in concept: before every move, take one second to check what the move "
+            "leaves behind. One second, every move — that's the whole assignment."
         ),
         (
             "## One drill for this week"
