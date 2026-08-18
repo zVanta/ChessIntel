@@ -87,6 +87,14 @@ function migrate(db: Database.Database): void {
       checked_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS funding_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      stripe_invoice_id TEXT NOT NULL UNIQUE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      credits INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE INDEX IF NOT EXISTS idx_reports_kid ON reports(kid_id);
     CREATE INDEX IF NOT EXISTS idx_games_report ON games(report_id);
     CREATE INDEX IF NOT EXISTS idx_followups_kid ON drill_followups(kid_id);
@@ -102,6 +110,8 @@ function migrate(db: Database.Database): void {
   ensureColumn(db, "kids", "focus_notes", "TEXT");
   ensureColumn(db, "kids", "stripe_customer_id", "TEXT");
   ensureColumn(db, "kids", "subscription_status", "TEXT NOT NULL DEFAULT 'none'");
+  ensureColumn(db, "users", "stripe_customer_id", "TEXT");
+  ensureColumn(db, "users", "subscription_status", "TEXT NOT NULL DEFAULT 'none'");
 
   db.exec(`CREATE INDEX IF NOT EXISTS idx_kids_user ON kids(user_id);`);
 
@@ -353,6 +363,44 @@ export function countReportsForKid(kidId: number): number {
   return row.n;
 }
 
+export function deleteReport(id: number): void {
+  getDb().prepare(`DELETE FROM reports WHERE id = ?`).run(id);
+}
+
+export interface ReportWithMeta extends Report {
+  kid_name: string;
+  kid_user_id: number | null;
+  user_email: string | null;
+}
+
+/**
+ * All reports joined with their kid + owner. Pass a userId to restrict to that
+ * user's players; pass undefined for every report (admin view).
+ */
+export function getReportsWithMeta(userId?: number): ReportWithMeta[] {
+  if (userId == null) {
+    return getDb()
+      .prepare(
+        `SELECT r.*, k.name AS kid_name, k.user_id AS kid_user_id, u.email AS user_email
+         FROM reports r
+         JOIN kids k ON k.id = r.kid_id
+         LEFT JOIN users u ON u.id = k.user_id
+         ORDER BY r.created_at DESC, r.id DESC`
+      )
+      .all() as ReportWithMeta[];
+  }
+  return getDb()
+    .prepare(
+      `SELECT r.*, k.name AS kid_name, k.user_id AS kid_user_id, u.email AS user_email
+       FROM reports r
+       JOIN kids k ON k.id = r.kid_id
+       LEFT JOIN users u ON u.id = k.user_id
+       WHERE k.user_id = ?
+       ORDER BY r.created_at DESC, r.id DESC`
+    )
+    .all(userId) as ReportWithMeta[];
+}
+
 // ---------------------------------------------------------------------------
 // Games
 // ---------------------------------------------------------------------------
@@ -440,4 +488,33 @@ export function getKidByStripeCustomer(customerId: string): Kid | undefined {
   return getDb()
     .prepare(`SELECT * FROM kids WHERE stripe_customer_id = ?`)
     .get(customerId) as Kid | undefined;
+}
+
+export function setUserSubscription(
+  userId: number,
+  customerId: string | null,
+  status: string
+): void {
+  getDb()
+    .prepare(
+      `UPDATE users SET stripe_customer_id = COALESCE(?, stripe_customer_id), subscription_status = ? WHERE id = ?`
+    )
+    .run(customerId, status, userId);
+}
+
+export function getUserByStripeCustomer(customerId: string): User | undefined {
+  return getDb()
+    .prepare(`SELECT * FROM users WHERE stripe_customer_id = ?`)
+    .get(customerId) as User | undefined;
+}
+
+/**
+ * Record one funded payment so it is never credited twice. Returns true when
+ * the invoice was new (and should therefore be granted).
+ */
+export function recordFundingEvent(invoiceId: string, userId: number, credits: number): boolean {
+  const res = getDb()
+    .prepare(`INSERT OR IGNORE INTO funding_events (stripe_invoice_id, user_id, credits) VALUES (?, ?, ?)`)
+    .run(invoiceId, userId, Math.max(0, Math.floor(credits)));
+  return res.changes > 0;
 }

@@ -63,13 +63,13 @@ export async function POST(req: Request) {
   // Credit system: one report costs one credit (admins are effectively unlimited).
   if (!consumeCredit(user.id)) {
     return NextResponse.json(
-      { error: "No credits left. Ask the admin to top up your account." },
+      { error: "No credits left. Fund credits on your Profile page." },
       { status: 402 }
     );
   }
 
   const rawMax = Number(input.maxGames ?? 20);
-  const maxGames = Math.max(1, Math.min(50, Number.isFinite(rawMax) ? rawMax : 20));
+  const maxGames = Math.max(1, Math.min(30, Number.isFinite(rawMax) ? rawMax : 20));
 
   const notes =
     typeof input.notes === "string" && input.notes.trim() ? input.notes.trim() : undefined;

@@ -37,7 +37,7 @@ export async function POST(req: Request) {
 
   if (!consumeCredit(user.id)) {
     return NextResponse.json(
-      { error: "No credits left. Ask the admin to top up your account." },
+      { error: "No credits left. Fund credits on your Profile page." },
       { status: 402 }
     );
   }

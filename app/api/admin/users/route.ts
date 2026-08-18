@@ -26,6 +26,7 @@ export async function GET() {
       created_at: u.created_at,
       kids_count: kids.n,
       reports_count: reports.n,
+      subscription_status: u.subscription_status,
     };
   });
 

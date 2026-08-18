@@ -12,7 +12,7 @@ export default function DashboardPage() {
     <div>
       <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
       <p className="mt-1 text-sm text-slate-600">
-        Your players and their reports. The first report for each player is free.
+        Your players and their reports. Every account starts with one free report credit.
       </p>
       <div className="mt-6">
         <KidList />

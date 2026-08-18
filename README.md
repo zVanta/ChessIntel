@@ -31,9 +31,11 @@ no third-party branding or content. (The internal analysis module is named
 - **Kid profiles** — age, USCF/FIDE/online ratings, focus notes, and linked
   chess.com / Lichess usernames.
 - **Accounts & credits** — parent login, an admin panel for managing users, and
-  a credit system where each analysis consumes a credit (admins grant them).
-- **Optional billing** — Stripe, $15/month with **no auto-renew**; the first
-  report per kid is free.
+  a credit system where each analysis consumes a credit.
+- **Self-serve funding** — users fund credits through Stripe ($20/mo adds 20
+  credits); admins can also grant credits directly from the admin panel.
+- **Report permissions** — users see and delete only their own reports; admins
+  see every report.
 - **Android app** — ships as a PWA plus a Trusted Web Activity (APK).
 - **Privacy-first** — COPPA / GDPR-K aware; no analytics on child accounts.
 
@@ -82,7 +84,7 @@ no third-party branding or content. (The internal analysis module is named
    service, which runs `chessintel_clone.run_analysis`: fetch recent games,
    analyze each with Stockfish (`ANALYSIS_DEPTH=14`; a blunder is losing ≥ 250
    centipawns), aggregate recurring habits, and write the report with an LLM
-   (`deepseek-chat` by default, or a LibreChat gateway model).
+   (`deepseek-reasoner` by default, or a LibreChat gateway model).
 2. **Persist** — `lib/persist.ts` stores a `reports` row, one `games` row per
    game, and — via the **memory loop** — a `drill_followups` row comparing the
    new report to the kid's most recent prior report with the same habit
@@ -164,17 +166,19 @@ npm run dev:all
 | `DEEPSEEK_API_KEY` / `DEEPSEEK_MODEL` / `DEEPSEEK_BASE_URL` | DeepSeek endpoint settings |
 | `LIBRECHAT_ENDPOINT` / `LIBRECHAT_API_KEY` / `LIBRECHAT_MODEL` | LibreChat gateway settings |
 | `CHESS_AGENT_MCP_URL` | ChessAgent MCP server endpoint (game fetch/enrichment) |
-| `BILLING_ENABLED` | Force paywall on/off (auto-enables when Stripe keys are set) |
-| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `STRIPE_PRICE_ID` | Stripe billing settings |
+| `BILLING_ENABLED` | Force funding on/off (auto-enables when Stripe keys are set) |
+| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `STRIPE_PRICE_ID` | Stripe settings ($20/mo plan) |
+| `FUNDING_CREDITS` | Credits granted each time the $20/mo plan is paid (default 20) |
 
-## Billing (Stripe)
+## Billing & credits (Stripe)
 
-Billing is optional and off by default. When enabled, each kid's first report
-is free and later reports require an active $15/month subscription that **does
-not auto-renew** (the webhook sets `cancel_at_period_end` on subscription
-creation). To enable it, create a recurring $15 price in the Stripe dashboard
-and set `STRIPE_PRICE_ID`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET`.
-Test card: `4242 4242 4242 4242`.
+Every account starts with one free report credit; each analysis then costs one
+credit. Users fund their account from the Profile page through a $20/month
+Stripe subscription — each paid month adds `FUNDING_CREDITS` (default 20)
+credits, granted idempotently by the webhook. Admins can also grant credits
+directly from the admin panel. To enable it, create a $20 recurring price in
+the Stripe dashboard and set `STRIPE_PRICE_ID`, `STRIPE_SECRET_KEY`, and
+`STRIPE_WEBHOOK_SECRET`. Test card: `4242 4242 4242 4242`.
 
 ## Deployment
 
@@ -210,9 +214,10 @@ npm run test:all   # pytest -q && vitest run
 │   │   ├── ask/  report-ask/ # coach chat
 │   │   ├── jobs/[id]/        # background job polling
 │   │   ├── progress/[kidId]/ # drill follow-up history
-│   │   ├── checkout/  webhooks/  # Stripe billing
+│   │   ├── reports/          # list + [id] delete (ownership-scoped)
+│   │   ├── checkout/  webhooks/  # Stripe funding
 │   ├── dashboard/  analyze/  progress/  profile/
-│   ├── admin/  login/  report/[id]/  game/[id]/
+│   ├── admin/  login/  report/[id]/  game/[id]/  reports/
 │   ├── onboard/  privacy/
 │   ├── page.tsx              # landing
 │   ├── layout.tsx  globals.css  manifest.ts
@@ -223,6 +228,7 @@ npm run test:all   # pytest -q && vitest run
 │   ├── ReportChat.tsx        # interactive coach chat
 │   ├── ProfileView.tsx       # kid + account management
 │   ├── AdminPanel.tsx        # user/credit administration
+│   ├── ReportsList.tsx       # report list + delete
 │   ├── AddKidForm.tsx  KidList.tsx  ProgressView.tsx
 │   ├── LoginForm.tsx  LogoutButton.tsx  PrintButton.tsx
 │   └── ServiceWorkerRegister.tsx
@@ -232,7 +238,7 @@ npm run test:all   # pytest -q && vitest run
 │   ├── python.ts             # FastAPI client
 │   ├── auth.ts  password.ts  # sessions + scrypt hashing
 │   ├── credits.ts  rateLimit.ts
-│   ├── billing.ts  stripe.ts # first-report-free / subscription gate
+│   ├── billing.ts  stripe.ts # funding gate + Stripe helpers
 │   ├── jobs.ts  poll.ts      # background job helpers
 │   ├── markdown.tsx          # XSS-safe markdown renderer
 │   ├── validation.ts  types.ts

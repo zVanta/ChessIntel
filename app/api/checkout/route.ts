@@ -1,52 +1,31 @@
 import { NextResponse } from "next/server";
-import { getKid } from "@/lib/db";
-import { getStripe, getStripePriceId } from "@/lib/stripe";
-import { getSessionUser, isAdmin } from "@/lib/auth";
+import { getStripe, getStripePriceId, getFundingCredits } from "@/lib/stripe";
+import { getSessionUser } from "@/lib/auth";
 
-export async function POST(req: Request) {
+/**
+ * Starts a checkout to fund the signed-in user's account. Each paid month of
+ * the $20/mo plan adds `FUNDING_CREDITS` (default 20) report credits to their
+ * account — the webhook does the actual crediting.
+ */
+export async function POST() {
   const user = getSessionUser();
   if (!user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    body = {};
-  }
-  const input = (body ?? {}) as Record<string, unknown>;
-
-  const kidId = Number(input.kidId);
-  if (!Number.isInteger(kidId) || kidId <= 0) {
-    return NextResponse.json({ error: "kidId is required." }, { status: 400 });
-  }
-  const kid = getKid(kidId);
-  if (!kid) {
-    return NextResponse.json({ error: "Kid not found." }, { status: 404 });
-  }
-  if (!isAdmin(user) && kid.user_id != null && kid.user_id !== user.id) {
-    return NextResponse.json({ error: "Kid not found." }, { status: 404 });
-  }
-
   const stripe = getStripe();
   const priceId = getStripePriceId();
-  const origin = new URL(req.url).origin;
+  const origin = new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").origin;
 
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
-    // The current Stripe API handles incomplete first payments (e.g. SCA)
-    // automatically; the webhook marks the kid active on success.
     line_items: [{ price: priceId, quantity: 1 }],
-    client_reference_id: String(kid.id),
-    metadata: { kidId: String(kid.id), kidName: kid.name },
+    client_reference_id: `user:${user.id}`,
+    metadata: { type: "fund", userId: String(user.id) },
     subscription_data: {
-      // Business model: $15/month with NO auto-renew. The webhook sets
-      // cancel_at_period_end=true once the subscription exists, so it will not
-      // renew after the first paid period.
-      metadata: { kidId: String(kid.id) },
+      metadata: { type: "fund", userId: String(user.id) },
     },
-    success_url: `${origin}/dashboard?checkout=success&kid=${kid.id}`,
-    cancel_url: `${origin}/dashboard?checkout=canceled`,
+    success_url: `${origin}/profile?funding=success`,
+    cancel_url: `${origin}/profile?funding=canceled`,
   });
 
-  return NextResponse.json({ url: session.url });
+  return NextResponse.json({ url: session.url, creditsPerMonth: getFundingCredits() });
 }

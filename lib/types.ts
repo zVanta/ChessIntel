@@ -5,6 +5,8 @@ export interface User {
   role: "admin" | "user" | string;
   credits: number;
   created_at: string;
+  stripe_customer_id: string | null;
+  subscription_status: "none" | "active" | "canceled" | "past_due" | string;
 }
 
 export interface Kid {

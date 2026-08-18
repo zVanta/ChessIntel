@@ -28,6 +28,9 @@ export default function ProfileView() {
   const [kids, setKids] = useState<KidWithMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [billingEnabled, setBillingEnabled] = useState(false);
+  const [funding, setFunding] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const [showAdd, setShowAdd] = useState(false);
   const [add, setAdd] = useState<KidFields>({ ...EMPTY_KID });
@@ -45,7 +48,10 @@ export default function ProfileView() {
       ]);
       const me = await meRes.json();
       const kidsData = await kidsRes.json();
-      if (kidsRes.ok) setKids((kidsData.kids as KidWithMeta[]) ?? []);
+      if (kidsRes.ok) {
+        setKids((kidsData.kids as KidWithMeta[]) ?? []);
+        setBillingEnabled(Boolean(kidsData.billingEnabled));
+      }
       if (meRes.ok) setUser(me.user as PublicUser);
     } catch {
       setError("Failed to load your profile.");
@@ -57,6 +63,12 @@ export default function ProfileView() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.search.includes("funding=success")) {
+      setNotice("Payment received — credits were added to your account.");
+    }
+  }, []);
 
   function fieldsFrom(kid: Kid | KidWithMeta): KidFields {
     return {
@@ -134,6 +146,20 @@ export default function ProfileView() {
     }
   }
 
+  async function fund() {
+    setFunding(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/checkout", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Checkout failed.");
+      if (data.url) window.location.href = data.url;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Checkout failed.");
+      setFunding(false);
+    }
+  }
+
   if (loading) return <p className="text-slate-500">Loading…</p>;
 
   return (
@@ -152,10 +178,22 @@ export default function ProfileView() {
               ⚡ {user?.credits ?? 0} report credit{(user?.credits ?? 0) === 1 ? "" : "s"}
             </span>
             <p className="mt-1 text-xs text-slate-400">One report = one credit</p>
+            {billingEnabled && user?.role !== "admin" && (
+              <button
+                onClick={fund}
+                disabled={funding}
+                className="mt-2 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {funding ? "Opening…" : "Fund credits — $20/mo"}
+              </button>
+            )}
           </div>
         </div>
       </div>
 
+      {notice && (
+        <p className="rounded-md bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</p>
+      )}
       {error && <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
       {/* Add child */}

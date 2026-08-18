@@ -9,7 +9,7 @@ services:
       CHESS_AGENT_MCP_URL: ${CHESS_AGENT_MCP_URL:-http://host.docker.internal:8080/mcp}
       AI_PROVIDER: ${AI_PROVIDER:-deepseek}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-reasoner}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
       LIBRECHAT_ENDPOINT: ${LIBRECHAT_ENDPOINT:-https://njxai.com}
       LIBRECHAT_API_KEY: ${LIBRECHAT_API_KEY:-}

@@ -10,6 +10,7 @@ interface AdminUser {
   created_at: string;
   kids_count: number;
   reports_count: number;
+  subscription_status: string;
 }
 
 export default function AdminPanel() {
@@ -17,6 +18,7 @@ export default function AdminPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [creditInput, setCreditInput] = useState<Record<number, string>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -56,6 +58,17 @@ export default function AdminPanel() {
     }
   }
 
+  async function setCredits(id: number) {
+    const raw = creditInput[id] ?? "";
+    const parsed = Number(raw);
+    if (raw === "" || !Number.isFinite(parsed) || parsed < 0) {
+      setError("Enter a non-negative number of credits.");
+      return;
+    }
+    await update(id, { credits: Math.floor(parsed) });
+    setCreditInput((s) => ({ ...s, [id]: "" }));
+  }
+
   async function remove(id: number, email: string) {
     if (!confirm(`Delete ${email} and all their data?`)) return;
     setBusyId(id);
@@ -93,6 +106,7 @@ export default function AdminPanel() {
               <th className="px-4 py-3">Credits</th>
               <th className="px-4 py-3">Kids</th>
               <th className="px-4 py-3">Reports</th>
+              <th className="px-4 py-3">Plan</th>
               <th className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
@@ -135,17 +149,43 @@ export default function AdminPanel() {
                       +
                     </button>
                     <button
-                      onClick={() => update(u.id, { credits: 10 })}
+                      onClick={() => update(u.id, { credits: u.credits + 20 })}
                       disabled={busyId === u.id}
                       className="ml-1 rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 hover:bg-emerald-200"
-                      title="Set to 10"
+                      title="Fund one $20 month (20 credits)"
                     >
-                      +10
+                      +20
+                    </button>
+                    <input
+                      type="number"
+                      min={0}
+                      value={creditInput[u.id] ?? ""}
+                      onChange={(e) => setCreditInput((s) => ({ ...s, [u.id]: e.target.value }))}
+                      placeholder="Set"
+                      className="ml-1 w-14 rounded border border-slate-300 px-1 py-0.5 text-xs"
+                    />
+                    <button
+                      onClick={() => setCredits(u.id)}
+                      disabled={busyId === u.id}
+                      className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
+                    >
+                      Set
                     </button>
                   </div>
                 </td>
                 <td className="px-4 py-3">{u.kids_count}</td>
                 <td className="px-4 py-3">{u.reports_count}</td>
+                <td className="px-4 py-3">
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                      u.subscription_status === "active"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-slate-100 text-slate-500"
+                    }`}
+                  >
+                    {u.subscription_status}
+                  </span>
+                </td>
                 <td className="px-4 py-3 text-right">
                   <button
                     onClick={() => remove(u.id, u.email)}

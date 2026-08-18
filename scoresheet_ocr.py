@@ -166,6 +166,7 @@ def _llm_repair(pgn: str, illegal_numbers: Sequence[int]) -> str:
             "keeping legal moves unchanged. Return only the PGN text.",
             f"PGN:\n{pgn}\n\nFlagged move numbers: {list(illegal_numbers)}",
             temperature=0.0,
+            model="deepseek-chat",
         )
         return repaired or pgn
     except Exception:

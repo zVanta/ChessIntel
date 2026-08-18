@@ -84,27 +84,6 @@ export default function KidList() {
     }
   }
 
-  async function subscribe(kid: KidWithMeta) {
-    setBusyKid(kid.id);
-    setActionError(null);
-    try {
-      const res = await fetch("/api/checkout", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ kidId: kid.id }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Checkout failed.");
-      if (data.url) window.location.href = data.url;
-    } catch (err) {
-      setActionError({
-        kidId: kid.id,
-        message: err instanceof Error ? err.message : "Checkout failed.",
-      });
-      setBusyKid(null);
-    }
-  }
-
   if (loading) {
     return <p className="text-slate-500">Loading players…</p>;
   }
@@ -129,8 +108,6 @@ export default function KidList() {
     <div className="space-y-6">
       {kids.map((kid) => {
         const platform = platforms[kid.id] || defaultPlatform(kid);
-        const needsSubscription =
-          billingEnabled && kid.reports_count > 0 && kid.subscription_status !== "active";
         return (
           <div
             key={kid.id}
@@ -151,17 +128,6 @@ export default function KidList() {
                       : "No reports yet."
                     : `Last report: ${kid.latest_report_at ?? "—"} · Tracking: ${kid.tracked_habit ?? "—"}`}
                 </p>
-                {billingEnabled && kid.reports_count > 0 && (
-                  <p
-                    className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                      kid.subscription_status === "active"
-                        ? "bg-emerald-100 text-emerald-700"
-                        : "bg-amber-100 text-amber-700"
-                    }`}
-                  >
-                    {kid.subscription_status === "active" ? "Active" : "No active plan"}
-                  </p>
-                )}
               </div>
 
               <div className="flex flex-col gap-2">
@@ -193,15 +159,6 @@ export default function KidList() {
                   >
                     Progress
                   </Link>
-                  {needsSubscription && (
-                    <button
-                      onClick={() => subscribe(kid)}
-                      disabled={busyKid === kid.id}
-                      className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-                    >
-                      Subscribe $15/mo
-                    </button>
-                  )}
                 </div>
               </div>
             </div>

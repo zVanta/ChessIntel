@@ -1,4 +1,4 @@
-import { getDb, getUserById, setUserCredits } from "./db";
+import { getDb, getUserById, recordFundingEvent, setUserCredits } from "./db";
 
 export function getUserCredits(userId: number): number {
   return getUserById(userId)?.credits ?? 0;
@@ -20,4 +20,14 @@ export function consumeCredit(userId: number): boolean {
 
 export function refundCredit(userId: number): void {
   grantCredits(userId, 1);
+}
+
+/**
+ * Fund an account from a Stripe payment. Idempotent per invoice: the same
+ * invoice is never credited twice, even if Stripe redelivers the webhook.
+ */
+export function grantFundingCredits(userId: number, invoiceId: string, amount: number): void {
+  if (recordFundingEvent(invoiceId, userId, amount)) {
+    grantCredits(userId, amount);
+  }
 }

@@ -46,7 +46,7 @@ AI_PROVIDER: str = os.environ.get("AI_PROVIDER", "deepseek").lower()
 
 # DeepSeek — OpenAI-compatible chat-completions API.
 DEEPSEEK_API_KEY: Optional[str] = os.environ.get("DEEPSEEK_API_KEY")
-DEEPSEEK_MODEL: str = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
+DEEPSEEK_MODEL: str = os.environ.get("DEEPSEEK_MODEL", "deepseek-reasoner")
 DEEPSEEK_BASE_URL: str = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1").rstrip("/")
 
 # LibreChat — agent gateway using the OpenAI Responses API.
@@ -105,6 +105,10 @@ def chat(system: str, user: str, endpoint: str, key: str, model: str,
          is_responses: bool, temperature: float = 0.7) -> str:
     """One completion against an explicit endpoint."""
     headers = {"Authorization": f"Bearer {key}"}
+    # deepseek-reasoner is a reasoning model: it ignores `temperature` and can
+    # take much longer, so give it a bigger token budget and a longer timeout.
+    is_reasoner = not is_responses and "reasoner" in (model or "").lower()
+    timeout = 180 if is_reasoner else 30
     if is_responses:
         payload: Dict[str, Any] = {
             "input": f"{system}\n\n{user}",
@@ -115,16 +119,19 @@ def chat(system: str, user: str, endpoint: str, key: str, model: str,
         if model:
             payload["model"] = model
     else:
-        payload = {
+        payload: Dict[str, Any] = {
             "model": model,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            "temperature": temperature,
         }
+        if is_reasoner:
+            payload["max_tokens"] = 8000
+        else:
+            payload["temperature"] = temperature
 
-    resp = requests.post(endpoint, headers=headers, json=payload, timeout=30)
+    resp = requests.post(endpoint, headers=headers, json=payload, timeout=timeout)
     resp.raise_for_status()
     data = resp.json()
     if is_responses:
@@ -133,16 +140,22 @@ def chat(system: str, user: str, endpoint: str, key: str, model: str,
 
 
 def complete(system: str, user: str, temperature: float = 0.7,
-             api_key: Optional[str] = None) -> str:
-    """Run a completion against the active provider, falling back to DeepSeek."""
-    endpoint, key, model, is_responses = target()
+             api_key: Optional[str] = None,
+             model: Optional[str] = None) -> str:
+    """Run a completion against the active provider, falling back to DeepSeek.
+
+    Pass ``model`` to override the active provider's default model for a single
+    call (e.g. use the fast ``deepseek-chat`` for OCR repair).
+    """
+    endpoint, key, active_model, is_responses = target()
     key = api_key or key
     if not key:
         raise RuntimeError("No LLM API key configured")
+    chosen = model or active_model
     try:
-        return chat(system, user, endpoint, key, model, is_responses, temperature)
+        return chat(system, user, endpoint, key, chosen, is_responses, temperature)
     except Exception:
         if is_responses and DEEPSEEK_API_KEY:
             ep2, k2, m2, _ = _deepseek_target()
-            return chat(system, user, ep2, k2, m2, False, temperature)
+            return chat(system, user, ep2, k2, model or m2, False, temperature)
         raise

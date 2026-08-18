@@ -344,7 +344,7 @@ export default function AnalyzeForm() {
             <input
               type="range"
               min={1}
-              max={10}
+              max={30}
               value={maxGames}
               onChange={(e) => setMaxGames(Number(e.target.value))}
               className="mt-1 w-full accent-emerald-600"
