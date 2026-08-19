@@ -1119,8 +1119,43 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
         f"Yes — {_moment_label(top_moment)}" if top_moment
         else "not this set — keep watching"
     )
-    moment1 = _moment_label(top_moment) if top_moment else "— (no moments in this set)"
-    moment2 = _moment_label(second_moment) if second_moment else "— (skip this heading)"
+    moment1 = _moment_label(top_moment) if top_moment else "no moments in this set"
+    moment2 = _moment_label(second_moment) if second_moment else "skip this heading"
+
+    # The "pattern" section is only about a concrete moment when one exists.
+    # With no flagged blunder we must not invent a fork/move to fill the space.
+    if top_moment:
+        pattern_section = [
+            "## The pattern: {habit}",
+            "",
+            "The baseline showed this, and it fired again in this set.",
+            "",
+            "### Moment 1 — {moment1}",
+            "",
+            "(Analyze this exact position like a coach: what was on the board, why "
+            "the played move hurt, why the engine's move was better in concrete "
+            "chess terms, and what to do differently next time. Phrase the takeaway "
+            "naturally — don't reuse a fixed 'Fix:' formula.)",
+            "",
+        ]
+        if second_moment:
+            pattern_section += [
+                "### Moment 2 — {moment2}",
+                "",
+                "(Analyze a different moment from the facts, written differently from "
+                "Moment 1.)",
+                "",
+            ]
+    else:
+        pattern_section = [
+            "## The pattern: {habit}",
+            "",
+            "(No single flagrant moment fired in this set. Write only from the "
+            "move-quality facts — the mistake/inaccuracy counts and the accuracy. "
+            "Say plainly that the habit did not appear as one big blunder; do NOT "
+            "invent a move, a fork, or a 'moment' that is not in the facts.)",
+            "",
+        ]
 
     template = [
         "# {kid} — Game Set Report",
@@ -1167,22 +1202,7 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
         "",
         "---",
         "",
-        "## The pattern: {habit}",
-        "",
-        "The baseline showed this, and it fired again in this set.",
-        "",
-        "### Moment 1 — {moment1}",
-        "",
-        "(Analyze this exact position like a coach: what was on the board, why "
-        "the played move hurt, why the engine's move was better in concrete "
-        "chess terms, and what to do differently next time. Phrase the takeaway "
-        "naturally — don't reuse a fixed 'Fix:' formula.)",
-        "",
-        "### Moment 2 — {moment2}",
-        "",
-        "(Analyze a different moment from the facts, written differently from "
-        "Moment 1. Skip this heading entirely if there is only one moment.)",
-        "",
+        *pattern_section,
         "---",
         "",
         "## The recurring weakness across the set",

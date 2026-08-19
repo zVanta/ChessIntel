@@ -438,6 +438,25 @@ def test_report_prompt_prefills_move_facts():
     assert "<move> vs <opponent>" not in prompt
 
 
+def test_report_prompt_no_moments_skips_moment_heading():
+    # A clean win with no big blunder must not force a "Moment 1 —" heading or
+    # invent a fork to fill it (the double "— —" and filler prose are gone).
+    ctx = {
+        "platform": "Lichess", "date_range": "recent games",
+        "wins": 1, "losses": 0, "draws": 0,
+        "acpl": 40, "avg_accuracy": 88, "openings": [], "class_counts": {},
+        "kid_color": "white",
+        "accuracy_white": 88, "accuracy_black": 0,
+        "class_counts_white": {"mistake": 3, "inaccuracy": 3},
+        "class_counts_black": {},
+        "games_brief": [], "moments": [], "notes": "", "answers": [],
+    }
+    prompt = cc._report_user_prompt("Vince", "Fork awareness", 1, "a drill", ctx)
+    assert "### Moment 1" not in prompt
+    assert "— —" not in prompt
+    assert "No single flagrant moment" in prompt
+
+
 def test_report_prompt_includes_history():
     ctx = {
         "platform": "Lichess", "date_range": "recent games",
