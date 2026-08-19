@@ -177,10 +177,11 @@ export default function ChessGameViewer({
         </div>
       </div>
 
-      <div className="mt-4 flex items-center gap-2">
+      <div className="mt-4 flex flex-wrap items-center gap-2">
         <button
           onClick={() => setIndex(0)}
           disabled={index === 0}
+          aria-label="First move"
           className="rounded bg-slate-200 px-3 py-1 text-sm font-medium disabled:opacity-40"
         >
           ⏮
@@ -188,6 +189,7 @@ export default function ChessGameViewer({
         <button
           onClick={() => setIndex((i) => Math.max(0, i - 1))}
           disabled={index === 0}
+          aria-label="Previous move"
           className="rounded bg-slate-200 px-3 py-1 text-sm font-medium disabled:opacity-40"
         >
           ◀
@@ -195,6 +197,7 @@ export default function ChessGameViewer({
         <button
           onClick={() => setIndex((i) => Math.min(total, i + 1))}
           disabled={index === total}
+          aria-label="Next move"
           className="rounded bg-slate-200 px-3 py-1 text-sm font-medium disabled:opacity-40"
         >
           ▶
@@ -202,6 +205,7 @@ export default function ChessGameViewer({
         <button
           onClick={() => setIndex(total)}
           disabled={index === total}
+          aria-label="Last move"
           className="rounded bg-slate-200 px-3 py-1 text-sm font-medium disabled:opacity-40"
         >
           ⏭
@@ -212,10 +216,14 @@ export default function ChessGameViewer({
           }
           className="rounded bg-slate-200 px-3 py-1 text-sm font-medium"
           title="Flip board"
+          aria-label="Flip board"
         >
           ⇅
         </button>
-        <span className="ml-2 text-sm text-slate-600">{moveLabel}</span>
+        <span className="text-sm text-slate-600">{moveLabel}</span>
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         {currentBlunder && (
           <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
             {currentBlunder.class ?? "mistake"} · −
