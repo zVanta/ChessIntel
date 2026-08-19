@@ -22,6 +22,18 @@ no third-party branding or content. (The internal analysis module is named
 - **Engine-grounded reports** — every report cites the real position (FEN) and
   Stockfish's preferred line, copies move notation exactly, and explains *why*
   a move was better in concrete chess terms.
+- **Move-by-move accuracy** — every move is scored 0–100 (CAPS-style) and
+  rolled up per game, per color, and across the set.
+- **Candidate-move comparison** — the costliest blunders are re-analyzed with
+  Multi-PV, so the report lists Stockfish's top alternatives with evaluations,
+  not just the single "best" move.
+- **Tactical threat detection** — each blunder is classified as hanging a piece
+  or walking into a fork, feeding two extra habit tags ("Hung pieces",
+  "Fork awareness") with their own drills.
+- **ELO-aware coaching** — report vocabulary and depth are pitched to the kid's
+  rating (online, USCF, or FIDE).
+- **Lichess-style game viewer** — an interactive review board with an
+  evaluation bar and the engine's best-move arrow.
 - **Recurring-habit detection** — aggregates across a player's recent games to
   name the one pattern that keeps costing points.
 - **Drill follow-up ("did it hold?")** — each new report compares against the
@@ -83,8 +95,11 @@ no third-party branding or content. (The internal analysis module is named
 1. **Analyze** — `POST /api/analyze` (or `/api/analyze-pgn`) calls the FastAPI
    service, which runs `chessintel_clone.run_analysis`: fetch recent games,
    analyze each with Stockfish (`ANALYSIS_DEPTH=14`; a blunder is losing ≥ 250
-   centipawns), aggregate recurring habits, and write the report with an LLM
-   (`deepseek-reasoner` by default, or a LibreChat gateway model).
+   centipawns), score every move's accuracy, detect hung pieces and forks, and
+   re-analyze the costliest blunders with Multi-PV for candidate moves. It then
+   aggregates recurring habits and writes the report with an LLM
+   (`deepseek-reasoner` by default, or a LibreChat gateway model), pitched to
+   the kid's rating when one is set.
 2. **Persist** — `lib/persist.ts` stores a `reports` row, one `games` row per
    game, and — via the **memory loop** — a `drill_followups` row comparing the
    new report to the kid's most recent prior report with the same habit
@@ -105,6 +120,7 @@ by the client.
 | Layer | Tech |
 | --- | --- |
 | Web app | Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS |
+| Board viewer | chessground (Lichess's board) + chess.js |
 | Data | SQLite via better-sqlite3 (schema auto-migrates on boot) |
 | Analysis service | FastAPI, python-chess, Stockfish |
 | OCR | Tesseract 5 |
@@ -225,7 +241,7 @@ npm run test:all   # pytest -q && vitest run
 ├── components/               # React components (client)
 │   ├── AnalyzeForm.tsx       # scoresheet / online / PGN / ask form
 │   ├── ScoreSheetUpload.tsx  # camera + gallery upload
-│   ├── ChessGameViewer.tsx   # chessboard game review
+│   ├── ChessGameViewer.tsx   # chessground review board (eval bar + best-move arrow)
 │   ├── ReportChat.tsx        # interactive coach chat
 │   ├── ProfileView.tsx       # kid + account management
 │   ├── AdminPanel.tsx        # user/credit administration
@@ -266,4 +282,9 @@ per-player opt-in by a parent/guardian, and no email to minors. See
 
 ## License
 
-MIT — see `LICENSE`.
+The project's own code is **MIT** — see `LICENSE`.
+
+The frontend bundles [chessground](https://github.com/lichess-org/chessground)
+(GPL-3.0-or-later) for the game-review board, so the distributed frontend as a
+whole is licensed GPL-3.0-or-later. chessground's own license ships in
+`node_modules/@lichess-org/chessground/LICENSE`.
