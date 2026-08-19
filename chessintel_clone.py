@@ -670,7 +670,8 @@ def build_report_context(reports: List[Dict[str, Any]], platform: str,
                          username: str, habit: str,
                          notes: Optional[str] = None,
                          answers: Optional[List[str]] = None,
-                         rating: Optional[int] = None) -> Dict[str, Any]:
+                         rating: Optional[int] = None,
+                         history: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Summarise analysed games into a compact, LLM-ready context dict."""
     wins = losses = draws = 0
     games_brief: List[Dict[str, str]] = []
@@ -744,6 +745,7 @@ def build_report_context(reports: List[Dict[str, Any]], platform: str,
         "moments": moments,
         "notes": (notes or "").strip(),
         "answers": [str(a).strip() for a in (answers or []) if a and str(a).strip()],
+        "history": history or [],
     }
 
 
@@ -778,6 +780,8 @@ _REPORT_SYSTEM = (
     "never write the same move on both sides of 'instead of'. The moment "
     "headings already name the moves, so do not rename them, and never reuse "
     "the same moment for Moment 1 and Moment 2.\n"
+    "- When past progress is given, reference it — name what improved and what "
+    "came back, so the player sees their own trajectory across reports.\n"
     "- Write in Markdown, keep every heading and the '---' rules exactly as "
     "given, and vary the prose between them. Keep the report under ~700 words."
 ).replace("{site_name}", SITE_NAME)
@@ -843,6 +847,21 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
         facts.append("What the kid said after the game:")
         for i, a in enumerate(ctx["answers"], 1):
             facts.append(f"  {i}. {a}")
+    history = ctx.get("history") or []
+    if history:
+        facts.append("Past progress across previous reports (oldest first):")
+        for h in history:
+            held = h.get("held")
+            if held is True:
+                status = "drill held at the next check"
+            elif held is False:
+                status = "drill came back at the next check"
+            else:
+                status = "not re-checked yet"
+            when = f" ({h.get('date')})" if h.get("date") else ""
+            facts.append(
+                f"- {h.get('habit', '?')}{when}: {h.get('points_lost', 0)} points lost — {status}"
+            )
 
     # Pre-fill the move placeholders with the actual facts so the LLM can only
     # write prose around them, never invent or misattribute a move.
@@ -1309,7 +1328,8 @@ def run_analysis(platform: str, username: str, kid_name: str = "Player",
                  engine: Optional[chess.engine.SimpleEngine] = None,
                  notes: Optional[str] = None,
                  answers: Optional[List[str]] = None,
-                 rating: Optional[int] = None) -> Dict[str, Any]:
+                 rating: Optional[int] = None,
+                 history: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Run the full intake pipeline and return a structured result.
 
     The result contains the full markdown report, a short summary text, the top
@@ -1354,7 +1374,7 @@ def run_analysis(platform: str, username: str, kid_name: str = "Player",
     points_lost = round(sum(r.get("points_lost", 0.0) for r in reports), 2)
     context = build_report_context(
         reports, platform, username, top_habit, notes=notes, answers=answers,
-        rating=rating,
+        rating=rating, history=history,
     )
     markdown = generate_report(kid_name, top_habit, len(reports), context=context)
 

@@ -1,5 +1,5 @@
 import { spawn } from "child_process";
-import type { AnalysisResult } from "./types";
+import type { AnalysisResult, KidHistoryEntry } from "./types";
 
 const SERVICE_URL = process.env.PYTHON_SERVICE_URL || "http://127.0.0.1:8000";
 
@@ -37,6 +37,7 @@ export interface AnalyzeRequestPayload {
   notes?: string;
   answers?: string[];
   rating?: number;
+  history?: KidHistoryEntry[];
 }
 
 /** Run the full intake pipeline via the FastAPI service. */

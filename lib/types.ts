@@ -65,6 +65,13 @@ export interface DrillFollowup {
   checked_at: string;
 }
 
+export interface KidHistoryEntry {
+  habit: string;
+  points_lost: number;
+  held: boolean | null;
+  date: string | null;
+}
+
 export interface ProgressRow {
   report: Report;
   followups: DrillFollowup[];

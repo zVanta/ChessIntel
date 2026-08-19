@@ -8,6 +8,7 @@ import type {
   GameRow,
   GameWithReport,
   Kid,
+  KidHistoryEntry,
   KidWithMeta,
   ProgressRow,
   Report,
@@ -476,6 +477,30 @@ export function getFollowupsForKid(kidId: number): DrillFollowup[] {
     .prepare(`SELECT * FROM drill_followups WHERE kid_id = ? ORDER BY checked_at DESC, id DESC`)
     .all(kidId) as (Omit<DrillFollowup, "held"> & { held: number })[];
   return rows.map((r) => ({ ...r, held: r.held === 1 }));
+}
+
+/**
+ * The kid's coaching history, oldest first: each past report's habit, its
+ * points lost, whether that habit's drill later held, and the report date.
+ * Used to make new reports reference the player's real trajectory.
+ */
+export function getKidHistory(kidId: number, limit = 6): KidHistoryEntry[] {
+  const reports = getDb()
+    .prepare(
+      `SELECT * FROM reports WHERE kid_id = ? ORDER BY created_at DESC, id DESC LIMIT ?`
+    )
+    .all(kidId, limit) as Report[];
+  const followups = getFollowupsForKid(kidId);
+  const heldByReport = new Map<number, boolean>();
+  for (const f of followups) {
+    heldByReport.set(f.report_id, f.held);
+  }
+  return [...reports].reverse().map((r) => ({
+    habit: r.recurring_habit,
+    points_lost: r.points_lost,
+    held: heldByReport.has(r.id) ? heldByReport.get(r.id)! : null,
+    date: (r.created_at || "").slice(0, 10) || null,
+  }));
 }
 
 export function getProgressForKid(kidId: number): ProgressRow[] {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getKid } from "@/lib/db";
+import { getKid, getKidHistory } from "@/lib/db";
 import { runAnalysis } from "@/lib/python";
 import { persistAnalysis } from "@/lib/persist";
 import { completeJob, createJob, failJob } from "@/lib/jobs";
@@ -81,6 +81,8 @@ export async function POST(req: Request) {
   const parsedRating = rawRating ? Number.parseInt(String(rawRating), 10) : NaN;
   const rating = Number.isFinite(parsedRating) ? parsedRating : undefined;
 
+  const history = getKidHistory(kidId);
+
   const job = createJob();
   void (async () => {
     try {
@@ -93,6 +95,7 @@ export async function POST(req: Request) {
         notes,
         answers,
         rating,
+        history,
       });
       const persisted = persistAnalysis(kidId, result);
       completeJob(job.id, {

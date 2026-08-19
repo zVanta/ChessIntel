@@ -26,6 +26,13 @@ from pydantic import BaseModel  # noqa: E402
 app = FastAPI(title="Chess Coach Report Pipeline", version="1.0.0")
 
 
+class HistoryEntry(BaseModel):
+    habit: str
+    points_lost: float
+    held: Optional[bool] = None
+    date: Optional[str] = None
+
+
 class AnalyzeRequest(BaseModel):
     platform: str
     username: str
@@ -35,6 +42,7 @@ class AnalyzeRequest(BaseModel):
     notes: Optional[str] = None
     answers: Optional[List[str]] = None
     rating: Optional[int] = None
+    history: Optional[List[HistoryEntry]] = None
 
 
 class AnalyzePgnRequest(BaseModel):
@@ -67,6 +75,7 @@ def analyze(req: AnalyzeRequest) -> Dict[str, Any]:
         notes=req.notes,
         answers=req.answers,
         rating=req.rating,
+        history=[h.model_dump() for h in req.history] if req.history else None,
     )
 
 

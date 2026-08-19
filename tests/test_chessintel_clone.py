@@ -261,3 +261,24 @@ def test_report_prompt_prefills_move_facts():
     assert "<better move>" not in prompt
     assert "<move> vs <opponent>" not in prompt
 
+
+def test_report_prompt_includes_history():
+    ctx = {
+        "platform": "Lichess", "date_range": "recent games",
+        "wins": 1, "losses": 0, "draws": 0,
+        "acpl": 40, "avg_accuracy": 80, "openings": [], "class_counts": {},
+        "games_brief": [], "moments": [], "notes": "", "answers": [],
+        "history": [
+            {"habit": "Hung pieces", "points_lost": 3.2, "held": True,
+             "date": "2026-07-01"},
+            {"habit": "Fork awareness", "points_lost": 2.1, "held": None,
+             "date": "2026-08-01"},
+        ],
+    }
+    prompt = cc._report_user_prompt("Alex", "Fork awareness", 3, "a drill", ctx)
+    assert "Past progress across previous reports" in prompt
+    assert "Hung pieces" in prompt
+    assert "drill held at the next check" in prompt
+    assert "Fork awareness" in prompt
+    assert "not re-checked yet" in prompt
+
