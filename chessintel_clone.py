@@ -176,8 +176,29 @@ def _hanging_squares(board: chess.Board) -> List[chess.Square]:
     return hanging
 
 
+# Value of a fork target when ranking forks. The king is priceless — a royal
+# fork (a check that also attacks a piece) is the whole story, even though the
+# king's material value is nil.
+_FORK_TARGET_VALUE = {
+    chess.PAWN: 1,
+    chess.KNIGHT: 3,
+    chess.BISHOP: 3,
+    chess.ROOK: 5,
+    chess.QUEEN: 9,
+    chess.KING: 100,
+}
+
+
 def _opponent_forks(board: chess.Board) -> List[Dict[str, Any]]:
-    """Opponent moves that attack two or more of the mover's pieces (a fork)."""
+    """Opponent moves where the *moved* piece attacks two or more of the
+    mover's pieces (a fork). Kings count, so a check that also attacks a piece
+    is a royal fork. Sorted most valuable first.
+
+    Only the moved piece's own attacks count. Counting every square the whole
+    army attacks after the move is what turned every quiet move (even ``Kh1``)
+    into a "fork" — the bishops, knights and pawns keep their old attacks on
+    the board no matter what moved.
+    """
     opp = board.turn
     mover = not opp
     forks: List[Dict[str, Any]] = []
@@ -187,16 +208,28 @@ def _opponent_forks(board: chess.Board) -> List[Dict[str, Any]]:
         except Exception:
             san = move.uci()
         board.push(move)
-        attacked: List[str] = []
-        for square, piece in board.piece_map().items():
-            # Include the king: a royal fork (a check that also attacks a piece)
-            # still counts as walking into a fork.
-            if piece.color == mover:
-                if board.attackers(opp, square):
-                    attacked.append(chess.square_name(square))
+        targets: List[chess.Square] = []
+        moved_sq = move.to_square
+        if board.piece_at(moved_sq) is not None:
+            for square, piece in board.piece_map().items():
+                if piece.color == mover and moved_sq in board.attackers(opp, square):
+                    targets.append(square)
+        if len(targets) >= 2:
+            targets.sort(
+                key=lambda s: _FORK_TARGET_VALUE.get(board.piece_at(s).piece_type, 0),
+                reverse=True,
+            )
+            value = sum(
+                _FORK_TARGET_VALUE.get(board.piece_at(s).piece_type, 0)
+                for s in targets
+            )
+            forks.append({
+                "san": san,
+                "squares": [chess.square_name(s) for s in targets],
+                "value": value,
+            })
         board.pop()
-        if len(attacked) >= 2:
-            forks.append({"san": san, "squares": attacked})
+    forks.sort(key=lambda f: -f["value"])
     return forks
 
 
@@ -230,7 +263,12 @@ def _threat_detail(board_after: chess.Board) -> Optional[str]:
     forks = _opponent_forks(board)
     if forks:
         f = forks[0]
-        return f"the reply {f['san']} attacks {' and '.join(f['squares'])}"
+        named = []
+        for square_name in f["squares"][:2]:
+            piece = board.piece_at(chess.parse_square(square_name))
+            pname = chess.piece_name(piece.piece_type) if piece else "piece"
+            named.append(f"the {pname} on {square_name}")
+        return f"the reply {f['san']} attacks {' and '.join(named)}"
     return None
 
 
@@ -386,12 +424,23 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
     """
     pgn = (game or {}).get("pgn") or ""
     node = chess.pgn.read_game(io.StringIO(pgn))
+
+    def _header(key: str) -> Optional[str]:
+        """A cleaned PGN header value, or None when absent or '?'."""
+        if node is None:
+            return None
+        val = (node.headers.get(key) or "").strip()
+        return val if val and val != "?" else None
+
+    white = (game or {}).get("white") or _header("White")
+    black = (game or {}).get("black") or _header("Black")
+    result = (game or {}).get("result") or _header("Result")
     empty: Dict[str, Any] = {
         "source": (game or {}).get("source"),
         "external_id": (game or {}).get("external_id"),
-        "white": (game or {}).get("white"),
-        "black": (game or {}).get("black"),
-        "result": (game or {}).get("result"),
+        "white": white,
+        "black": black,
+        "result": result,
         "played_at": (game or {}).get("played_at"),
         "opening": (game or {}).get("opening"),
         "pgn": pgn,
@@ -402,6 +451,8 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
         "acpl": 0,
         "evals": [],
         "class_counts": {},
+        "class_counts_white": {},
+        "class_counts_black": {},
         "accuracy": 0,
         "accuracy_white": 0,
         "accuracy_black": 0,
@@ -417,6 +468,8 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
     total_moves = 0
     evals: List[List[Any]] = []
     class_counts: Dict[str, int] = {}
+    class_white: Dict[str, int] = {}
+    class_black: Dict[str, int] = {}
     accuracies: List[float] = []
     acc_white: List[float] = []
     acc_black: List[float] = []
@@ -470,6 +523,8 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
         loss_pct = max(0.0, _winning_chances(score_before) - _winning_chances(score_after))
         class_label = _classify_loss(loss_pct)
         class_counts[class_label] = class_counts.get(class_label, 0) + 1
+        bucket = class_white if mover == chess.WHITE else class_black
+        bucket[class_label] = bucket.get(class_label, 0) + 1
         move_accuracy = _accuracy_from_loss(loss_pct)
         accuracies.append(move_accuracy)
         (acc_white if mover == chess.WHITE else acc_black).append(move_accuracy)
@@ -499,9 +554,9 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
     return {
         "source": (game or {}).get("source"),
         "external_id": (game or {}).get("external_id"),
-        "white": (game or {}).get("white"),
-        "black": (game or {}).get("black"),
-        "result": (game or {}).get("result"),
+        "white": white,
+        "black": black,
+        "result": result,
         "played_at": (game or {}).get("played_at"),
         "opening": (game or {}).get("opening"),
         "pgn": pgn,
@@ -512,6 +567,8 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
         "acpl": round(total_cp_lost_all / max(1, total_moves)),
         "evals": evals,
         "class_counts": class_counts,
+        "class_counts_white": class_white,
+        "class_counts_black": class_black,
         "accuracy": round(sum(accuracies) / len(accuracies)) if accuracies else 0,
         "accuracy_white": round(sum(acc_white) / len(acc_white)) if acc_white else 0,
         "accuracy_black": round(sum(acc_black) / len(acc_black)) if acc_black else 0,
@@ -757,10 +814,37 @@ def build_report_context(reports: List[Dict[str, Any]], platform: str,
     acc_values = [g["accuracy"] for g in games_brief if g.get("accuracy")]
     avg_accuracy = round(sum(acc_values) / len(acc_values)) if acc_values else 0
     openings = sorted({g["opening"] for g in games_brief if g.get("opening")})
+
+    # Which side of the board the kid plays (when the platform username tells us).
+    uname = (username or "").strip().lower()
+    kid_color: Optional[str] = None
+    if uname:
+        for r in reports:
+            if (r.get("white") or "").strip().lower() == uname:
+                kid_color = "white"
+                break
+            if (r.get("black") or "").strip().lower() == uname:
+                kid_color = "black"
+                break
+
+    # Accuracy and move-quality, split by colour. A kid's report must never
+    # claim the opponent's good moves as their own.
+    acc_w = [r.get("accuracy_white") or 0 for r in reports]
+    acc_b = [r.get("accuracy_black") or 0 for r in reports]
+    accuracy_white = round(sum(acc_w) / len(acc_w)) if acc_w else 0
+    accuracy_black = round(sum(acc_b) / len(acc_b)) if acc_b else 0
+
     class_counts: Dict[str, int] = {}
+    class_white: Dict[str, int] = {}
+    class_black: Dict[str, int] = {}
     for r in reports:
         for label, count in (r.get("class_counts") or {}).items():
             class_counts[label] = class_counts.get(label, 0) + int(count)
+        for label, count in (r.get("class_counts_white") or {}).items():
+            class_white[label] = class_white.get(label, 0) + int(count)
+        for label, count in (r.get("class_counts_black") or {}).items():
+            class_black[label] = class_black.get(label, 0) + int(count)
+
     platform_label = {
         "chesscom": "Chess.com",
         "lichess": "Lichess",
@@ -776,9 +860,14 @@ def build_report_context(reports: List[Dict[str, Any]], platform: str,
         "habit": habit,
         "acpl": avg_acpl,
         "avg_accuracy": avg_accuracy,
+        "kid_color": kid_color,
+        "accuracy_white": accuracy_white,
+        "accuracy_black": accuracy_black,
         "rating": rating,
         "openings": openings,
         "class_counts": class_counts,
+        "class_counts_white": class_white,
+        "class_counts_black": class_black,
         "games_brief": games_brief,
         "moments": moments,
         "notes": (notes or "").strip(),
@@ -808,7 +897,9 @@ _REPORT_SYSTEM = (
     "- Be energetic and specific: short punchy sentences, occasional "
     "exclamation, real chess slang. No filler like 'chess is a game of...'.\n"
     "- Write so a kid and their parent can both follow it.\n"
-    "- Never invent moves, names, ratings, or dates; stick to the facts given.\n"
+    "- Never invent moves, names, ratings, dates, or match results; stick to "
+    "the facts given. If a game's outcome is unknown, state the raw score "
+    "(e.g. 'ended 1-0') — never claim a draw or a win that is not in the facts.\n"
     "- When a rating is given, pitch the vocabulary and depth to that level — "
     "simple words for beginners, sharper shorthand for stronger kids.\n"
     "- Use every extra fact you are given: move accuracy, the type of mistake "
@@ -833,33 +924,69 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
         f"Games reviewed: {game_count}",
         f"Platform: {ctx.get('platform')}",
         f"Date range: {ctx.get('date_range')}",
-        f"Results: {ctx.get('wins')} wins, {ctx.get('losses')} losses, "
-        f"{ctx.get('draws')} draws",
-        f"Average centipawn loss per move (ACPL): {ctx.get('acpl')}",
-        f"Average move accuracy: {ctx.get('avg_accuracy')}%",
         f"Recurring habit: {habit}",
         f"Suggested drill: {drill}",
     ]
+    wins, losses, draws = ctx.get("wins") or 0, ctx.get("losses") or 0, ctx.get("draws") or 0
+    if wins or losses or draws:
+        facts.append(f"Results: {wins} wins, {losses} losses, {draws} draws")
+    # Accuracy split by colour: the kid is never credited with the opponent's
+    # good moves. When their side is unknown, show both colours honestly.
+    kid_color = ctx.get("kid_color")
+    acc_w = ctx.get("accuracy_white") or 0
+    acc_b = ctx.get("accuracy_black") or 0
+    if kid_color == "white" and acc_w:
+        facts.append(f"Move accuracy (yours, playing White): {acc_w}%")
+    elif kid_color == "black" and acc_b:
+        facts.append(f"Move accuracy (yours, playing Black): {acc_b}%")
+    elif acc_w or acc_b:
+        facts.append(f"Move accuracy — White: {acc_w}%, Black: {acc_b}%")
+    elif ctx.get("avg_accuracy"):
+        facts.append(f"Average move accuracy (both sides): {ctx.get('avg_accuracy')}%")
     if ctx.get("rating"):
         facts.append(f"Player rating: ~{ctx['rating']}")
     openings = ctx.get("openings") or []
     if openings:
         facts.append("Openings played: " + ", ".join(openings[:6]))
-    class_counts = ctx.get("class_counts") or {}
-    if class_counts:
-        order = ["blunder", "mistake", "inaccuracy", "okay", "excellent", "best"]
-        summary = ", ".join(
-            f"{label}s: {class_counts.get(label, 0)}" for label in order if class_counts.get(label)
+    order = ["blunder", "mistake", "inaccuracy", "okay", "excellent", "best"]
+
+    def _class_summary(counts: Dict[str, int]) -> str:
+        return (
+            ", ".join(f"{label}s: {counts.get(label, 0)}" for label in order if counts.get(label))
+            or "no classified moves"
         )
-        facts.append("Move quality across the set: " + summary)
+
+    cc_w = ctx.get("class_counts_white") or {}
+    cc_b = ctx.get("class_counts_black") or {}
+    if cc_w or cc_b:
+        if kid_color == "white":
+            facts.append("Move quality (yours, playing White): " + _class_summary(cc_w))
+        elif kid_color == "black":
+            facts.append("Move quality (yours, playing Black): " + _class_summary(cc_b))
+        else:
+            facts.append(
+                "Move quality — White: " + _class_summary(cc_w)
+                + "; Black: " + _class_summary(cc_b)
+            )
+    elif ctx.get("class_counts"):
+        facts.append(
+            "Move quality across the set (both sides): "
+            + _class_summary(ctx.get("class_counts") or {})
+        )
     brief = ctx.get("games_brief") or []
     if brief:
-        facts.append("Games: " + "; ".join(
-            f"vs {g['opponent']} ({g['outcome']}, {g['result']})"
-            + (f", {g['opening']}" if g.get("opening") else "")
-            + (f", accuracy {g['accuracy']}%" if g.get("accuracy") else "")
-            for g in brief[:12]
-        ))
+        game_parts = []
+        for g in brief[:12]:
+            outcome = g.get("outcome")
+            result = g.get("result") or "*"
+            # 'unknown' means we cannot tell which side the kid played — state
+            # the raw result rather than letting the writer invent win/loss/draw.
+            outcome_txt = outcome if outcome and outcome != "unknown" else f"result {result}"
+            seg = f"vs {g['opponent']} ({outcome_txt})"
+            if g.get("opening"):
+                seg += f", {g['opening']}"
+            game_parts.append(seg)
+        facts.append("Games: " + "; ".join(game_parts))
     moments = ctx.get("moments") or []
     if moments:
         facts.append("Key mistake moments (engine line included):")

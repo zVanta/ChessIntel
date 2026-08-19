@@ -180,6 +180,27 @@ def test_analyze_game_san_never_double_annotates_checkmate():
         assert "++" not in s
 
 
+def test_analyze_game_reads_players_and_result_from_pgn_headers():
+    # The PGN-paste / scoresheet path passes only {"pgn": ...}, so the player
+    # names and result must be taken from the PGN headers — otherwise the
+    # report shows "vs Opponent (unknown, *)" and the writer invents a draw.
+    pgn = '[Event "?"]\n[White "vince"]\n[Black "ds"]\n[Result "1-0"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 *'
+    report = cc.analyze_game({"pgn": pgn, "source": "scoresheet", "external_id": ""}, FakeEngine(), depth=1)
+    assert report["white"] == "vince"
+    assert report["black"] == "ds"
+    assert report["result"] == "1-0"
+
+
+def test_analyze_game_splits_class_counts_by_color():
+    pgn = '[Event "T"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 *'
+    report = cc.analyze_game({"pgn": pgn, "source": "test", "external_id": "1"}, FakeEngine(), depth=1)
+    valid = {"blunder", "mistake", "inaccuracy", "okay", "excellent", "best"}
+    assert set(report["class_counts_white"]) <= valid
+    assert set(report["class_counts_black"]) <= valid
+    total = sum(report["class_counts_white"].values()) + sum(report["class_counts_black"].values())
+    assert total == report["moves"]
+
+
 # ---------------------------------------------------------------------------
 # generate_report fallback (no API key)
 # ---------------------------------------------------------------------------
@@ -260,6 +281,30 @@ def test_threat_detail_names_royal_fork():
     assert "Nc7" in detail
     assert "e8" in detail
     assert "e6" in detail
+
+
+# The exact position after 16...Qe6 in the game that produced the hallucinated
+# report ("the reply Ne7 attacked a whole cloud of squares — g8, c8, d7, a7,
+# e6, c6, g5, e5"). White has many attackers on the board, so the OLD fork
+# detector (whole-army attack count) mistook every quiet move for a fork.
+REAL_GAME_AFTER_QE6 = "r1b1kbnr/3p4/4qp2/1pBNp1pp/1P2P3/P7/B1P2PPP/R2Q1RK1 w - - 0 17"
+
+
+def test_opponent_forks_picks_royal_fork_not_quiet_moves():
+    board = chess.Board(REAL_GAME_AFTER_QE6)
+    forks = cc._opponent_forks(board)
+    assert forks, "expected the Nc7+ royal fork to be detected"
+    assert forks[0]["san"] == "Nc7+"
+    assert "e8" in forks[0]["squares"]
+    assert "e6" in forks[0]["squares"]
+    # Quiet shuffles must never be reported as forks.
+    assert not any(f["san"] == "Kh1" or f["san"] == "h3" for f in forks)
+
+
+def test_threat_detail_real_game_royal_fork():
+    board = chess.Board(REAL_GAME_AFTER_QE6)
+    detail = cc._threat_detail(board)
+    assert detail == "the reply Nc7+ attacks the king on e8 and the queen on e6"
 
 
 # ---------------------------------------------------------------------------
