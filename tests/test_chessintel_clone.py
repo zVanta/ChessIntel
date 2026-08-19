@@ -194,6 +194,22 @@ def test_generate_report_fallback_without_key(monkeypatch):
     assert "3" in text
 
 
+def test_generate_report_retries_with_fast_model(monkeypatch):
+    import llm
+    calls = []
+
+    def fake_complete(system, user, temperature=0.7, api_key=None, model=None):
+        calls.append(model)
+        if model is None:
+            raise RuntimeError("timeout")
+        return "# Alex — Game Set Report\n\nShort version text."
+
+    monkeypatch.setattr(llm, "complete", fake_complete)
+    text = cc.generate_report("Alex", "Piece safety", 3)
+    assert calls == [None, "deepseek-chat"]
+    assert "Short version" in text
+
+
 # ---------------------------------------------------------------------------
 # accuracy + threat detection
 # ---------------------------------------------------------------------------
@@ -281,4 +297,13 @@ def test_report_prompt_includes_history():
     assert "drill held at the next check" in prompt
     assert "Fork awareness" in prompt
     assert "not re-checked yet" in prompt
+
+
+def test_score_to_cp_mate_in_zero():
+    if not hasattr(chess.engine, "PovScore"):
+        return  # python-chess v1 has no PovScore
+    # Mate(0) from the mated side's POV: White is to move and already mated.
+    score = chess.engine.PovScore(chess.engine.Mate(0), chess.WHITE)
+    assert cc._score_to_cp(score, chess.WHITE) == -10000
+    assert cc._score_to_cp(score, chess.BLACK) == 10000
 

@@ -108,7 +108,7 @@ def chat(system: str, user: str, endpoint: str, key: str, model: str,
     # deepseek-reasoner is a reasoning model: it ignores `temperature` and can
     # take much longer, so give it a bigger token budget and a longer timeout.
     is_reasoner = not is_responses and "reasoner" in (model or "").lower()
-    timeout = 180 if is_reasoner else 30
+    timeout = 360 if is_reasoner else 30
     if is_responses:
         payload: Dict[str, Any] = {
             "input": f"{system}\n\n{user}",

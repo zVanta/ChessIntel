@@ -96,7 +96,14 @@ def _score_to_cp(score: Any, color: chess.Color) -> int:
     if not (hasattr(score, "score") and callable(score.score)):
         relative = score.pov(color)
         if relative.is_mate():
-            return 10000 if relative.mate() > 0 else -10000
+            mate_in = relative.mate()
+            if mate_in > 0:
+                return 10000
+            if mate_in < 0:
+                return -10000
+            # mate_in == 0: checkmate is already on the board, so the side to
+            # move is mated. "color" wins unless it is that mated side.
+            return -10000 if getattr(score, "turn", None) == color else 10000
         return relative.score(mate_score=10000)
 
     # Raw score from White's perspective (v1 Score, or v2 Cp/Mate).
@@ -434,6 +441,11 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
             score_after = score_before
 
         cp_loss = score_before - score_after
+        # Playing the engine's own top move is never a blunder. Guard against
+        # mate-score sign flips: delivering the mate Stockfish also found makes
+        # score_after read as Mate(0), which would otherwise look like a loss.
+        if best_uci is not None and move.uci() == best_uci:
+            cp_loss = 0
         total_moves += 1
         total_cp_lost_all += max(0, cp_loss)
         evals.append([ply, score_after, best_uci])
@@ -583,7 +595,7 @@ def _make_drill(habit: str, ctx: Dict[str, Any]) -> str:
         opponent = top.get("opponent") or "your opponent"
         san = top.get("san") or "that move"
         best = top.get("best")
-        if best:
+        if best and best != san:
             return (
                 f"In the game vs {opponent}, rewind to {san} and play {best} instead — "
                 f"then say out loud why it's safer. Repeat for the other key moments "
@@ -595,6 +607,12 @@ def _make_drill(habit: str, ctx: Dict[str, Any]) -> str:
             f"moment in this report."
         )
     return _DRILLS.get(habit, _DEFAULT_DRILL)
+
+
+def _safe_best(moment: Dict[str, Any]) -> Optional[str]:
+    """The engine's preferred move, or None when it equals the played move."""
+    best = moment.get("best")
+    return best if best and best != (moment.get("san") or "") else None
 
 # Report document branding. Kept separate from any third-party product name —
 # this is the app's own brand.
@@ -869,7 +887,7 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
         label = m.get("san") or "?"
         best = m.get("best")
         opponent = m.get("opponent") or "your opponent"
-        if best:
+        if best and best != (m.get("san") or ""):
             label += f" instead of {best}"
         return f"{label} (vs {opponent})"
 
@@ -1013,7 +1031,8 @@ def _build_markdown_report(kid_name: str, habit: str, game_count: int,
 
     if moments:
         top = moments[0]
-        best = f" instead of {top['best']}" if top.get("best") else ""
+        best_move = _safe_best(top)
+        best = f" instead of {best_move}" if best_move else ""
         seen_line = f"Yes — {top['san']}{best} vs {top['opponent']}"
     else:
         seen_line = "Not in this set — keep watching"
@@ -1024,11 +1043,12 @@ def _build_markdown_report(kid_name: str, habit: str, game_count: int,
 
     moment_blocks = []
     for i, m in enumerate(moments[:3], 1):
-        best_heading = f" instead of {m['best']}" if m.get("best") else ""
-        best_body = f" The engine wanted {m['best']}." if m.get("best") else ""
+        best_move = _safe_best(m)
+        best_heading = f" instead of {best_move}" if best_move else ""
+        best_body = f" The engine wanted {best_move}." if best_move else ""
         fix_line = (
             f"**Fix:** before you play a move like {m['san']}, stop and name what it "
-            f"leaves behind — then find {m['best']}." if m.get("best") else
+            f"leaves behind — then find {best_move}." if best_move else
             f"**Fix:** before you play {m['san']}, pause and name the piece it leaves "
             "undefended."
         )
@@ -1043,11 +1063,12 @@ def _build_markdown_report(kid_name: str, habit: str, game_count: int,
     # Build a drill that references this game's actual key moment.
     if moments:
         top = moments[0]
-        if top.get("best"):
+        best_move = _safe_best(top)
+        if best_move:
             drill_steps = (
                 f"**{habit} — the 15-minute sharpener**\n\n"
                 f"1. Set up the position just before {top['san']} in this game.\n"
-                f"2. Find the engine's move ({top['best']}) and say out loud why it's safer.\n"
+                f"2. Find the engine's move ({best_move}) and say out loud why it's safer.\n"
                 f"3. Do the same for the other moments below.\n\n"
                 f"**Got it when:** you name the safer move in under 10 seconds, 3 in a row.\n\n"
                 f"{drill}"
@@ -1198,18 +1219,27 @@ def generate_report(kid_name: str, habit: str, game_count: int,
     }
     drill = _make_drill(habit, ctx)
     fallback = _build_markdown_report(kid_name, habit, game_count, drill, ctx)
+    user_prompt = _report_user_prompt(kid_name, habit, game_count, drill, ctx)
 
-    try:
-        text = llm.complete(
-            _REPORT_SYSTEM,
-            _report_user_prompt(kid_name, habit, game_count, drill, ctx),
-            temperature=0.4,
-            api_key=api_key,
-        )
-        cleaned = (text or "").strip()
-        return cleaned or fallback
-    except Exception:
-        return fallback
+    # Try the configured model first, then the fast DeepSeek model, and only
+    # then the deterministic template. deepseek-reasoner can exceed the request
+    # timeout on long prompts, and a failed or empty answer must never silently
+    # downgrade the whole report to the formulaic fallback.
+    for model in (None, "deepseek-chat"):
+        try:
+            text = llm.complete(
+                _REPORT_SYSTEM,
+                user_prompt,
+                temperature=0.4,
+                api_key=api_key,
+                model=model,
+            )
+            cleaned = (text or "").strip()
+            if cleaned:
+                return cleaned
+        except Exception:
+            continue
+    return fallback
 
 
 # ---------------------------------------------------------------------------
