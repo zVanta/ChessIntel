@@ -773,6 +773,11 @@ _REPORT_SYSTEM = (
     "- Use every extra fact you are given: move accuracy, the type of mistake "
     "(hung piece, fork), and alternative moves with their evaluations. Show "
     "the player what else was on the table.\n"
+    "- The played move and the engine's preferred move are FIXED facts. Quote "
+    "them exactly as given — never change, re-annotate, or invent a move, and "
+    "never write the same move on both sides of 'instead of'. The moment "
+    "headings already name the moves, so do not rename them, and never reuse "
+    "the same moment for Moment 1 and Moment 2.\n"
     "- Write in Markdown, keep every heading and the '---' rules exactly as "
     "given, and vary the prose between them. Keep the report under ~700 words."
 ).replace("{site_name}", SITE_NAME)
@@ -839,6 +844,25 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
         for i, a in enumerate(ctx["answers"], 1):
             facts.append(f"  {i}. {a}")
 
+    # Pre-fill the move placeholders with the actual facts so the LLM can only
+    # write prose around them, never invent or misattribute a move.
+    def _moment_label(m: Dict[str, Any]) -> str:
+        label = m.get("san") or "?"
+        best = m.get("best")
+        opponent = m.get("opponent") or "your opponent"
+        if best:
+            label += f" instead of {best}"
+        return f"{label} (vs {opponent})"
+
+    top_moment = moments[0] if moments else None
+    second_moment = moments[1] if len(moments) > 1 else None
+    seen_in = (
+        f"Yes — {_moment_label(top_moment)}" if top_moment
+        else "not this set — keep watching"
+    )
+    moment1 = _moment_label(top_moment) if top_moment else "— (no moments in this set)"
+    moment2 = _moment_label(second_moment) if second_moment else "— (skip this heading)"
+
     template = [
         "# {kid} — Game Set Report",
         "",
@@ -856,7 +880,7 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
         "",
         "**Baseline read:** {count} recent online games  ",
         "**Pattern found:** {habit}  ",
-        "**Seen in this game:** Yes — <move> vs <opponent> (or “not this set” if it didn't fire)  ",
+        "**Seen in this game:** {seen_in}  ",
         "**The habit to train:** <one punchy, concrete sentence>  ",
         "**Tracking:** Begins with this report  ",
         "",
@@ -888,14 +912,14 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
         "",
         "The baseline showed this, and it fired again in this set.",
         "",
-        "### Moment 1 — <bad move> instead of <better move> (vs <opponent>)",
+        "### Moment 1 — {moment1}",
         "",
         "(Analyze this exact position like a coach: what was on the board, why "
         "the played move hurt, why the engine's move was better in concrete "
         "chess terms, and what to do differently next time. Phrase the takeaway "
         "naturally — don't reuse a fixed 'Fix:' formula.)",
         "",
-        "### Moment 2 — <bad move> instead of <better move> (vs <opponent>)",
+        "### Moment 2 — {moment2}",
         "",
         "(Analyze a different moment from the facts, written differently from "
         "Moment 1. Skip this heading entirely if there is only one moment.)",
@@ -943,6 +967,9 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
     body = body.replace("{platform}", ctx.get("platform") or "online")
     body = body.replace("{date_range}", ctx.get("date_range") or "recent games")
     body = body.replace("{habit}", habit)
+    body = body.replace("{seen_in}", seen_in)
+    body = body.replace("{moment1}", moment1)
+    body = body.replace("{moment2}", moment2)
 
     return (
         "\n".join(facts)

@@ -226,3 +226,38 @@ def test_blunder_threat_labels():
     assert cc._blunder_threat(fork) == "walked into a fork"
     assert cc._blunder_threat(chess.Board()) is None
 
+
+# ---------------------------------------------------------------------------
+# report prompt pre-fills the real moves (no hallucinated placeholders)
+# ---------------------------------------------------------------------------
+
+def test_report_prompt_prefills_move_facts():
+    ctx = {
+        "platform": "Lichess",
+        "date_range": "recent games",
+        "wins": 1, "losses": 0, "draws": 0,
+        "acpl": 40, "avg_accuracy": 80,
+        "openings": ["Italian Game"],
+        "class_counts": {"mistake": 2},
+        "games_brief": [{
+            "opponent": "Alice", "outcome": "win", "result": "1-0",
+            "opening": "Italian Game", "acpl": 40, "accuracy": 80,
+        }],
+        "moments": [
+            {"san": "Nf3", "best": "Nc3", "ply": 5, "phase": "middlegame",
+             "cp_loss": 1.2, "opponent": "Alice", "fen": None, "line": "Nc3 d5",
+             "threat": None, "candidates": []},
+            {"san": "Re1", "best": "Re1#", "ply": 23, "phase": "endgame",
+             "cp_loss": 3.0, "opponent": "Alice", "fen": None, "line": "Re1#",
+             "threat": None, "candidates": []},
+        ],
+        "notes": "", "answers": [],
+    }
+    prompt = cc._report_user_prompt("Alex", "Piece safety", 3, "a drill", ctx)
+    assert "Moment 1 — Nf3 instead of Nc3 (vs Alice)" in prompt
+    assert "Moment 2 — Re1 instead of Re1# (vs Alice)" in prompt
+    assert "Yes — Nf3 instead of Nc3 (vs Alice)" in prompt
+    assert "<bad move>" not in prompt
+    assert "<better move>" not in prompt
+    assert "<move> vs <opponent>" not in prompt
+
