@@ -76,6 +76,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <Link href="/repertoire" className="hover:text-slate-900">
                     Repertoire
                   </Link>
+                  <Link href="/sparring" className="hover:text-slate-900">
+                    Sparring
+                  </Link>
                   <Link href="/profile" className="hover:text-slate-900">
                     Profile
                   </Link>

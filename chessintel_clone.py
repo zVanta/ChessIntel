@@ -23,6 +23,7 @@ import io
 import json
 import math
 import os
+import random
 import re
 import sys
 from datetime import datetime, timedelta, timezone
@@ -1730,6 +1731,50 @@ def suggest_moves(engine: chess.engine.SimpleEngine, fen: str,
             "cp": _score_to_cp(info.get("score"), turn),
         })
     return suggestions[:num]
+
+
+def _spar_params(elo: int) -> tuple:
+    """Map a target playing strength to (search_depth, top_k_candidates)."""
+    if elo >= 1600:
+        return 14, 1
+    if elo >= 1200:
+        return 10, 2
+    if elo >= 800:
+        return 7, 3
+    return 5, 4
+
+
+def spar_move(engine: chess.engine.SimpleEngine, fen: str, elo: int = 1200):
+    """Pick a move for a sparring partner of roughly ``elo`` strength.
+
+    Weaker play searches less deeply and draws from more candidate moves
+    (weighted toward the best), so low Elo blunders like a human while high
+    Elo plays near-best. Returns a ``chess.Move`` or ``None`` when the game is
+    over or the position is invalid.
+    """
+    try:
+        board = chess.Board(fen)
+    except Exception:
+        return None
+    legal = list(board.legal_moves)
+    if not legal:
+        return None
+    depth, top = _spar_params(max(0, elo))
+    n = min(top, len(legal))
+    try:
+        result = engine.analyse(board, chess.engine.Limit(depth=depth), multipv=n)
+    except Exception:
+        return legal[0]
+    lines = result if isinstance(result, list) else [result]
+    candidates = [info["pv"][0] for info in lines if info.get("pv")]
+    if not candidates:
+        return legal[0]
+    if len(candidates) == 1:
+        return candidates[0]
+    # Weighted toward the strongest move; a 1/(rank+1) spread keeps low-Elo
+    # play inconsistent without ever favouring a clearly bad move.
+    weights = [1.0 / (i + 1) for i in range(len(candidates))]
+    return random.choices(candidates, weights=weights, k=1)[0]
 
 
 def _enrich_blunders(reports: List[Dict[str, Any]],

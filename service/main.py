@@ -74,6 +74,11 @@ class RepertoireSuggestRequest(BaseModel):
     num_moves: int = 5
 
 
+class SparRequest(BaseModel):
+    fen: str
+    elo: int = 1200
+
+
 @app.get("/health")
 def health() -> Dict[str, str]:
     return {"status": "ok"}
@@ -244,6 +249,29 @@ def repertoire_suggest(req: RepertoireSuggestRequest) -> Dict[str, Any]:
         except Exception:
             pass
     return {"fen": " ".join(board.fen().split()[:4]), "moves": moves}
+
+
+@app.post("/spar")
+def spar(req: SparRequest) -> Dict[str, Any]:
+    """One move for a human-like sparring partner at roughly ``req.elo``."""
+    try:
+        board = chessintel_clone.chess.Board(req.fen)
+    except Exception:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="invalid fen")
+    if board.is_game_over():
+        return {"move_uci": None, "move_san": None, "game_over": True}
+    engine = chessintel_clone._open_engine()
+    try:
+        move = chessintel_clone.spar_move(engine, req.fen, elo=req.elo)
+    finally:
+        try:
+            engine.quit()
+        except Exception:
+            pass
+    if move is None:
+        return {"move_uci": None, "move_san": None, "game_over": True}
+    return {"move_uci": move.uci(), "move_san": board.san(move), "game_over": False}
 
 
 @app.post("/ocr")

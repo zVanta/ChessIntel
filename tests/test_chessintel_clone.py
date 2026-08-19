@@ -300,6 +300,40 @@ def test_suggest_moves_empty_on_bad_fen():
     assert cc.suggest_moves(eng, "not a fen", depth=1, num=3) == []
 
 
+def test_spar_params_map_elo_to_depth_and_breadth():
+    assert cc._spar_params(1800) == (14, 1)
+    assert cc._spar_params(1600) == (14, 1)
+    assert cc._spar_params(1400) == (10, 2)
+    assert cc._spar_params(900) == (7, 3)
+    assert cc._spar_params(400) == (5, 4)
+
+
+def test_spar_move_returns_legal_move():
+    eng = SuggestEngine()
+    board = chess.Board()
+    move = cc.spar_move(eng, board.fen(), elo=800)
+    assert move in list(board.legal_moves)
+
+
+def test_spar_move_strong_play_picks_best():
+    eng = SuggestEngine()
+    board = chess.Board()
+    # At high Elo only the best (first) candidate is considered.
+    move = cc.spar_move(eng, board.fen(), elo=2000)
+    first_legal = list(board.legal_moves)[0]
+    assert move == first_legal
+
+
+def test_spar_move_none_on_bad_fen():
+    assert cc.spar_move(SuggestEngine(), "not a fen", elo=1000) is None
+
+
+def test_spar_move_none_on_game_over():
+    eng = SuggestEngine()
+    board = chess.Board("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3")
+    assert cc.spar_move(eng, board.fen(), elo=1000) is None
+
+
 def test_cp_loss_ignores_mate_to_win():
     # A forced mate (~10000cp) converted to a still-winning +7.1 is not a loss.
     assert cc._cp_loss(9997, 710) == 0

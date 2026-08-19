@@ -134,6 +134,14 @@ export async function suggestRepertoireMoves(
   });
 }
 
+/** One move from the human-like sparring partner at roughly this Elo. */
+export async function sparMove(
+  fen: string,
+  elo: number
+): Promise<{ move_uci: string | null; move_san: string | null; game_over: boolean }> {
+  return postJson("/spar", { fen, elo });
+}
+
 /** Convert a scoresheet photo (bytes) to PGN via the FastAPI service. */
 export async function ocrScoresheet(imageBuffer: Buffer, kidName?: string): Promise<string> {
   const form = new FormData();
