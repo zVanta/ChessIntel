@@ -201,6 +201,48 @@ def test_analyze_game_splits_class_counts_by_color():
     assert total == report["moves"]
 
 
+def test_parse_clock_seconds():
+    assert cc._parse_clock_seconds("") is None
+    assert cc._parse_clock_seconds("3s") == 3
+    assert cc._parse_clock_seconds("0s") == 0
+    assert cc._parse_clock_seconds("26s") == 26
+    assert cc._parse_clock_seconds("1:01m") == 61
+    assert cc._parse_clock_seconds("book 0s") == 0
+    assert cc._parse_clock_seconds("10s (Nc3)") == 10
+    assert cc._parse_clock_seconds("[%clk 0:03:00]") == 180
+    assert cc._parse_clock_seconds("just a comment") is None
+
+
+def test_analyze_game_captures_clock_and_after_capture():
+    pgn = ('[Event "T"]\n[White "Alice"]\n[Black "Bob"]\n\n'
+           '1. e4 {5s} e5 {3s} 2. Nf3 {1s} Nc6 {4s} 3. d4 {10s} exd4 {2s} 4. Nxd4 {8s} *')
+    report = cc.analyze_game({"pgn": pgn, "source": "test", "external_id": "1"}, FakeEngine(), depth=1)
+    white = [m for m in report["moves_detail"] if m["color"] == "white"]
+    assert [m["seconds"] for m in white] == [5.0, 1.0, 10.0, 8.0]
+    nxd4 = [m for m in report["moves_detail"] if m["san"] == "Nxd4"][0]
+    assert nxd4["after_capture"] is True  # exd4 was a capture
+    blunder = [b for b in report["blunders"] if b["san"] == "Nf3"][0]
+    assert blunder["seconds"] == 1.0
+    assert blunder["seconds"] < cc.INSTANT_SECONDS
+
+
+def test_time_stats_detects_reflex_errors():
+    reports = [{
+        "moves_detail": [
+            {"color": "white", "class": "okay", "seconds": 10.0, "after_capture": False},
+            {"color": "white", "class": "blunder", "seconds": 1.0, "after_capture": True},
+            {"color": "white", "class": "excellent", "seconds": 5.0, "after_capture": False},
+            {"color": "black", "class": "mistake", "seconds": 1.0, "after_capture": False},
+        ],
+    }]
+    stats = cc._time_stats(reports, "white")
+    assert stats["moves_with_clock"] == 3  # black's move is filtered out
+    assert stats["instant_moves"] == 1
+    assert len(stats["reflex_errors"]) == 1
+    assert stats["reflex_errors"][0]["class"] == "blunder"
+    assert stats["median_clean"] == 7.5  # (5 + 10) / 2
+
+
 def test_analyze_game_records_blunder_color_and_per_color_points():
     # FakeEngine makes White blunder every move and Black stay flat, so every
     # detected blunder belongs to White.

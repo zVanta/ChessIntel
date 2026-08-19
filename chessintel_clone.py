@@ -23,6 +23,7 @@ import io
 import json
 import math
 import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional
@@ -460,6 +461,70 @@ def _chesscom_result(g: Dict[str, Any]) -> str:
 # Engine analysis
 # ---------------------------------------------------------------------------
 
+INSTANT_SECONDS: float = 3.0  # A move played faster than this is reflex.
+
+_CLOCK_RE = re.compile(r"\[%clk\s+(\d+):(\d+):(\d+)\]|(\d+(?::\d+){0,2})\s*([sm])\b")
+
+
+def _parse_clock_seconds(comment: str) -> Optional[float]:
+    """Seconds remaining on the player's clock from a PGN move comment.
+
+    Handles ``{3s}`` / ``{1:01m}`` / ``{book 0s}`` and ``[%clk 0:03:00]``.
+    Returns None when the comment has no clock.
+    """
+    if not comment:
+        return None
+    m = _CLOCK_RE.search(comment)
+    if not m:
+        return None
+    if m.group(1) is not None:  # [%clk h:mm:ss]
+        return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3))
+    raw, unit = m.group(4), m.group(5)
+    parts = [int(x) for x in raw.split(":")]
+    if unit == "m":
+        return parts[0] * 60 + (parts[1] if len(parts) > 1 else 0)
+    if len(parts) == 1:
+        return float(parts[0])
+    if len(parts) == 2:
+        return parts[0] * 60 + parts[1]
+    return parts[0] * 3600 + parts[1] * 60 + parts[2]
+
+
+def _fmt_seconds(seconds: float) -> str:
+    seconds = int(round(seconds))
+    if seconds < 60:
+        return f"{seconds}s"
+    return f"{seconds // 60}:{seconds % 60:02d}"
+
+
+def _time_stats(reports: List[Dict[str, Any]], kid_color: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Clock-based insight: do mistakes get less thought than sound moves?"""
+    rows = [
+        m for r in reports for m in (r.get("moves_detail") or [])
+        if (not kid_color or m.get("color") == kid_color)
+    ]
+    timed = [m for m in rows if m.get("seconds") is not None]
+    if not timed:
+        return None
+    errors = [m for m in timed if m.get("class") in ("blunder", "mistake", "inaccuracy")]
+    clean = [m for m in timed if m.get("class") in ("okay", "excellent", "best")]
+
+    def _median(items: List[Dict[str, Any]]) -> Optional[float]:
+        vals = sorted(m["seconds"] for m in items)
+        if not vals:
+            return None
+        mid = len(vals) // 2
+        return vals[mid] if len(vals) % 2 else (vals[mid - 1] + vals[mid]) / 2
+
+    return {
+        "moves_with_clock": len(timed),
+        "instant_moves": sum(1 for m in timed if m["seconds"] < INSTANT_SECONDS),
+        "reflex_errors": [m for m in errors if m["seconds"] < INSTANT_SECONDS],
+        "median_clean": _median(clean),
+        "median_error": _median(errors),
+    }
+
+
 def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
                  depth: int = ANALYSIS_DEPTH) -> Dict[str, Any]:
     """Analyze a single game (dict with a ``pgn`` key) with a chess engine.
@@ -497,6 +562,7 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
         "moves": 0,
         "acpl": 0,
         "evals": [],
+        "moves_detail": [],
         "class_counts": {},
         "class_counts_white": {},
         "class_counts_black": {},
@@ -522,8 +588,13 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
     accuracies: List[float] = []
     acc_white: List[float] = []
     acc_black: List[float] = []
+    moves_detail: List[Dict[str, Any]] = []
+    prev_was_capture = False
 
-    for ply, move in enumerate(node.mainline_moves(), start=1):
+    for ply, child in enumerate((c for c in node.mainline() if c.move is not None), start=1):
+        move = child.move
+        seconds = _parse_clock_seconds(child.comment or "")
+        after_capture = prev_was_capture
         mover = board.turn
         try:
             san = board.san(move)
@@ -553,6 +624,7 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
             best_san = None
             best_uci = None
             pv_line = None
+        is_capture = board.is_capture(move)
         board.push(move)
         try:
             info_after = engine.analyse(board, chess.engine.Limit(depth=depth))
@@ -579,6 +651,14 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
         move_accuracy = _accuracy_from_loss(loss_pct)
         accuracies.append(move_accuracy)
         (acc_white if mover == chess.WHITE else acc_black).append(move_accuracy)
+        moves_detail.append({
+            "ply": ply,
+            "color": "white" if mover == chess.WHITE else "black",
+            "san": san,
+            "class": class_label,
+            "seconds": seconds,
+            "after_capture": after_capture,
+        })
         if cp_loss >= BLUNDER_THRESHOLD_CP and score_before > -DECISIVE_CP:
             phase = phase_of(ply)
             # NOTE: board.san(move) already includes the correct check (+) /
@@ -596,12 +676,15 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
                 "line": pv_line,
                 "threat": _blunder_threat(board),
                 "threat_detail": _threat_detail(board),
+                "seconds": seconds,
+                "after_capture": after_capture,
             })
             total_cp_lost += cp_loss
             if mover == chess.WHITE:
                 total_cp_white += cp_loss
             else:
                 total_cp_black += cp_loss
+        prev_was_capture = is_capture
 
     phase_blunders = {"opening": 0, "middlegame": 0, "endgame": 0}
     for b in blunders:
@@ -624,6 +707,7 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
         "moves": total_moves,
         "acpl": round(total_cp_lost_all / max(1, total_moves)),
         "evals": evals,
+        "moves_detail": moves_detail,
         "class_counts": class_counts,
         "class_counts_white": class_white,
         "class_counts_black": class_black,
@@ -944,6 +1028,8 @@ def build_report_context(reports: List[Dict[str, Any]], platform: str,
         "lichess": "Lichess",
     }.get(platform, platform or "online")
 
+    time_stats = _time_stats(reports, kid_color)
+
     return {
         "platform": platform_label,
         "game_count": len(reports),
@@ -962,6 +1048,7 @@ def build_report_context(reports: List[Dict[str, Any]], platform: str,
         "class_counts": class_counts,
         "class_counts_white": class_white,
         "class_counts_black": class_black,
+        "time_stats": time_stats,
         "games_brief": games_brief,
         "moments": moments,
         "notes": (notes or "").strip(),
@@ -1111,8 +1198,28 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
                 ))
             if m.get("line"):
                 parts.append(f"engine line: {m['line']}")
+            if m.get("seconds") is not None:
+                if m["seconds"] < INSTANT_SECONDS:
+                    parts.append(f"time: {_fmt_seconds(m['seconds'])} — reflex (played instantly)")
+                else:
+                    parts.append(f"time: {_fmt_seconds(m['seconds'])}")
             parts.append(f"opponent: {m['opponent']}")
             facts.append("; ".join(parts))
+    time_stats = ctx.get("time_stats")
+    if time_stats:
+        seg = [
+            f"clock data: {time_stats['moves_with_clock']} moves, "
+            f"{time_stats['instant_moves']} played instantly (<3s)"
+        ]
+        if time_stats.get("median_clean") is not None and time_stats.get("median_error") is not None:
+            seg.append(
+                f"median time {_fmt_seconds(time_stats['median_clean'])} on sound moves vs "
+                f"{_fmt_seconds(time_stats['median_error'])} on mistakes"
+            )
+        reflex = time_stats.get("reflex_errors") or []
+        if reflex:
+            seg.append(f"{len(reflex)} mistake(s) played in under 3s — reflex, not a decision")
+        facts.append("Time: " + "; ".join(seg))
     if ctx.get("notes"):
         facts.append(f"Parent note: {ctx['notes']}")
     if ctx.get("answers"):
