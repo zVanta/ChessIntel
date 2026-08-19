@@ -77,6 +77,10 @@ export async function POST(req: Request) {
     ? (input.answers as unknown[]).map((a) => String(a ?? "").trim()).filter(Boolean)
     : undefined;
 
+  const rawRating = kid.online_rating || kid.uscf_rating || kid.fide_rating;
+  const parsedRating = rawRating ? Number.parseInt(String(rawRating), 10) : NaN;
+  const rating = Number.isFinite(parsedRating) ? parsedRating : undefined;
+
   const job = createJob();
   void (async () => {
     try {
@@ -88,6 +92,7 @@ export async function POST(req: Request) {
         since_days: 30,
         notes,
         answers,
+        rating,
       });
       const persisted = persistAnalysis(kidId, result);
       completeJob(job.id, {

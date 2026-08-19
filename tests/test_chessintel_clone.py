@@ -192,3 +192,37 @@ def test_generate_report_fallback_without_key(monkeypatch):
     assert "Alex" in text
     assert "Piece safety" in text
     assert "3" in text
+
+
+# ---------------------------------------------------------------------------
+# accuracy + threat detection
+# ---------------------------------------------------------------------------
+
+def test_accuracy_from_loss_is_bounded_and_monotonic():
+    assert cc._accuracy_from_loss(0) == pytest.approx(100, abs=0.1)
+    assert cc._accuracy_from_loss(5) < cc._accuracy_from_loss(0)
+    assert 0 < cc._accuracy_from_loss(50) < 100
+    assert cc._accuracy_from_loss(5000) == 0
+
+
+def test_hanging_squares_detects_en_prise_piece():
+    # Black knight on b4 is attacked by the white a3 pawn and undefended.
+    board = chess.Board("6k1/8/8/8/1n6/P7/8/4K3 w - - 0 1")
+    names = [chess.square_name(s) for s in cc._hanging_squares(board)]
+    assert "b4" in names
+
+
+def test_opponent_forks_detects_knight_fork():
+    # White knight on d5 can play Nc7, forking both black rooks (a8, e8).
+    board = chess.Board("r3r1k1/8/8/3N4/8/8/8/7K w - - 0 1")
+    forks = cc._opponent_forks(board)
+    assert any(f["san"] == "Nc7" for f in forks)
+
+
+def test_blunder_threat_labels():
+    hung = chess.Board("6k1/8/8/8/1n6/P7/8/4K3 w - - 0 1")
+    assert cc._blunder_threat(hung) == "hung a piece"
+    fork = chess.Board("r3r1k1/8/8/3N4/8/8/8/7K w - - 0 1")
+    assert cc._blunder_threat(fork) == "walked into a fork"
+    assert cc._blunder_threat(chess.Board()) is None
+

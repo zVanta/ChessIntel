@@ -36,6 +36,7 @@ export interface AnalyzeRequestPayload {
   since_days: number;
   notes?: string;
   answers?: string[];
+  rating?: number;
 }
 
 /** Run the full intake pipeline via the FastAPI service. */

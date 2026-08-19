@@ -10,7 +10,12 @@ interface GameBlunder {
   san?: string;
   phase: string;
   cp_loss: number;
+  best?: string | null;
+  class?: string;
+  loss_pct?: number;
 }
+
+type GameEval = [number, number, string | null];
 
 export default function GamePage({ params }: { params: { id: string } }) {
   const user = getSessionUser();
@@ -20,11 +25,17 @@ export default function GamePage({ params }: { params: { id: string } }) {
   if (!game) notFound();
 
   let blunders: GameBlunder[] = [];
+  let evals: GameEval[] = [];
   const report = getReport(game.report_id);
   if (report) {
     try {
       const payload = JSON.parse(report.json_payload) as {
-        games?: { external_id?: string | null; pgn?: string; blunders?: GameBlunder[] }[];
+        games?: {
+          external_id?: string | null;
+          pgn?: string;
+          blunders?: GameBlunder[];
+          evals?: GameEval[];
+        }[];
       };
       const match = (payload.games ?? []).find(
         (g) =>
@@ -32,8 +43,10 @@ export default function GamePage({ params }: { params: { id: string } }) {
           (g.pgn && g.pgn === game.pgn)
       );
       blunders = match?.blunders ?? [];
+      evals = match?.evals ?? [];
     } catch {
       blunders = [];
+      evals = [];
     }
   }
 
@@ -45,7 +58,7 @@ export default function GamePage({ params }: { params: { id: string } }) {
         {game.external_id ? ` · ${game.external_id}` : ""} · Analyzed: {game.analyzed_at}
       </p>
       <div className="mt-6">
-        <ChessGameViewer pgn={game.pgn} blunders={blunders} />
+        <ChessGameViewer pgn={game.pgn} blunders={blunders} evals={evals} />
       </div>
     </div>
   );

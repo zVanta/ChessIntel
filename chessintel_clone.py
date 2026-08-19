@@ -140,6 +140,75 @@ def _classify_loss(loss_pct: float) -> str:
     return "best"
 
 
+def _accuracy_from_loss(loss_pct: float) -> float:
+    """Map an advantage loss (win-%) to a 0–100 move accuracy (CAPS-style)."""
+    acc = 103.1668 * math.exp(-0.04354 * max(0.0, float(loss_pct))) - 3.1669
+    return max(0.0, min(100.0, acc))
+
+
+# ---------------------------------------------------------------------------
+# Tactical threat detection (hung pieces / forks) for blunder classification
+# ---------------------------------------------------------------------------
+
+_PIECE_VALUES = {"p": 1, "n": 3, "b": 3, "r": 5, "q": 9, "k": 0}
+
+
+def _hanging_squares(board: chess.Board) -> List[chess.Square]:
+    """Squares where the side that just moved has an en-prise piece.
+
+    A piece is "hanging" when an enemy piece attacks it and it has fewer
+    defenders than attackers (or no defender at all). Kings are excluded.
+    """
+    mover = not board.turn
+    hanging: List[chess.Square] = []
+    for square, piece in board.piece_map().items():
+        if piece.color != mover or piece.piece_type == chess.KING:
+            continue
+        attackers = board.attackers(not mover, square)
+        if not attackers:
+            continue
+        defenders = board.attackers(mover, square)
+        if not defenders or len(defenders) < len(attackers):
+            hanging.append(square)
+    return hanging
+
+
+def _opponent_forks(board: chess.Board) -> List[Dict[str, Any]]:
+    """Opponent moves that attack two or more of the mover's pieces (a fork)."""
+    opp = board.turn
+    mover = not opp
+    forks: List[Dict[str, Any]] = []
+    for move in board.legal_moves:
+        try:
+            san = board.san(move)
+        except Exception:
+            san = move.uci()
+        board.push(move)
+        attacked: List[str] = []
+        for square, piece in board.piece_map().items():
+            if piece.color == mover and piece.piece_type != chess.KING:
+                if board.attackers(opp, square):
+                    attacked.append(chess.square_name(square))
+        board.pop()
+        if len(attacked) >= 2:
+            forks.append({"san": san, "squares": attacked})
+    return forks
+
+
+def _blunder_threat(board_after: chess.Board) -> Optional[str]:
+    """Classify the immediate tactical damage of a just-played move.
+
+    Returns a short label ("hung a piece", "walked into a fork") or None when
+    the mistake is not one of those two clean motifs.
+    """
+    board_after = board_after.copy()
+    if _hanging_squares(board_after):
+        return "hung a piece"
+    if _opponent_forks(board_after):
+        return "walked into a fork"
+    return None
+
+
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -308,6 +377,9 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
         "acpl": 0,
         "evals": [],
         "class_counts": {},
+        "accuracy": 0,
+        "accuracy_white": 0,
+        "accuracy_black": 0,
         "habit_tags": [],
     }
     if node is None:
@@ -318,8 +390,11 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
     total_cp_lost = 0
     total_cp_lost_all = 0
     total_moves = 0
-    evals: List[List[int]] = []
+    evals: List[List[Any]] = []
     class_counts: Dict[str, int] = {}
+    accuracies: List[float] = []
+    acc_white: List[float] = []
+    acc_black: List[float] = []
 
     for ply, move in enumerate(node.mainline_moves(), start=1):
         mover = board.turn
@@ -333,12 +408,14 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
         except Exception:
             score_before = 0
         best_san = None
+        best_uci = None
         pv_line = None
         fen_before = board.fen()
         try:
             pv = info_before.get("pv") if isinstance(info_before, dict) else None
             if pv:
                 best_san = board.san(pv[0])
+                best_uci = pv[0].uci()
                 tmp = board.copy()
                 pv_sans = []
                 for m in pv[:4]:
@@ -347,6 +424,7 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
                 pv_line = " ".join(pv_sans)
         except Exception:
             best_san = None
+            best_uci = None
             pv_line = None
         board.push(move)
         try:
@@ -358,10 +436,13 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
         cp_loss = score_before - score_after
         total_moves += 1
         total_cp_lost_all += max(0, cp_loss)
-        evals.append([ply, score_after])
+        evals.append([ply, score_after, best_uci])
         loss_pct = max(0.0, _winning_chances(score_before) - _winning_chances(score_after))
         class_label = _classify_loss(loss_pct)
         class_counts[class_label] = class_counts.get(class_label, 0) + 1
+        move_accuracy = _accuracy_from_loss(loss_pct)
+        accuracies.append(move_accuracy)
+        (acc_white if mover == chess.WHITE else acc_black).append(move_accuracy)
         if cp_loss >= BLUNDER_THRESHOLD_CP:
             phase = phase_of(ply)
             # NOTE: board.san(move) already includes the correct check (+) /
@@ -376,6 +457,7 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
                 "class": class_label,
                 "fen": fen_before,
                 "line": pv_line,
+                "threat": _blunder_threat(board),
             })
             total_cp_lost += cp_loss
 
@@ -399,6 +481,9 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
         "acpl": round(total_cp_lost_all / max(1, total_moves)),
         "evals": evals,
         "class_counts": class_counts,
+        "accuracy": round(sum(accuracies) / len(accuracies)) if accuracies else 0,
+        "accuracy_white": round(sum(acc_white) / len(acc_white)) if acc_white else 0,
+        "accuracy_black": round(sum(acc_black) / len(acc_black)) if acc_black else 0,
         "habit_tags": _tag_blunders(blunders),
     }
 
@@ -414,6 +499,11 @@ def _tag_blunders(blunders: List[Dict[str, Any]]) -> List[str]:
             tags.append("Endgame technique")
         else:
             tags.append("Piece safety")
+        threat = b.get("threat")
+        if threat == "hung a piece":
+            tags.append("Hung pieces")
+        elif threat == "walked into a fork":
+            tags.append("Fork awareness")
     # De-duplicate while preserving frequency order for aggregation.
     seen = set()
     result = []
@@ -462,6 +552,15 @@ _DRILLS: Dict[str, str] = {
         "Practice king-and-pawn endings and simple rook endings against the engine "
         "until you can win the same winning position three times in a row without "
         "slipping."
+    ),
+    "Hung pieces": (
+        "Before every move, run a three-second 'is anything hanging?' scan over "
+        "every piece you own — do 10 hang-check puzzles a day until it's automatic."
+    ),
+    "Fork awareness": (
+        "After each opponent move, name every square their pieces attack; the "
+        "moment one move hits two of your pieces at once, say 'fork!' and defend "
+        "before touching anything."
     ),
 }
 
@@ -570,7 +669,8 @@ def _date_range(dates: List[datetime]) -> str:
 def build_report_context(reports: List[Dict[str, Any]], platform: str,
                          username: str, habit: str,
                          notes: Optional[str] = None,
-                         answers: Optional[List[str]] = None) -> Dict[str, Any]:
+                         answers: Optional[List[str]] = None,
+                         rating: Optional[int] = None) -> Dict[str, Any]:
     """Summarise analysed games into a compact, LLM-ready context dict."""
     wins = losses = draws = 0
     games_brief: List[Dict[str, str]] = []
@@ -593,6 +693,7 @@ def build_report_context(reports: List[Dict[str, Any]], platform: str,
             "opening": r.get("opening") or "",
             "points_lost": r.get("points_lost") or 0.0,
             "acpl": r.get("acpl") or 0,
+            "accuracy": r.get("accuracy") or 0,
         })
         for b in sorted(r.get("blunders") or [], key=lambda b: -(b.get("cp_loss") or 0))[:2]:
             moments.append({
@@ -604,6 +705,8 @@ def build_report_context(reports: List[Dict[str, Any]], platform: str,
                 "opponent": opponent,
                 "fen": b.get("fen"),
                 "line": b.get("line"),
+                "threat": b.get("threat"),
+                "candidates": b.get("candidates") or [],
             })
         played = _played_date(r.get("played_at"))
         if played:
@@ -612,6 +715,8 @@ def build_report_context(reports: List[Dict[str, Any]], platform: str,
     moments = sorted(moments, key=lambda m: -m["cp_loss"])[:4]
     acpl_values = [g["acpl"] for g in games_brief if g.get("acpl")]
     avg_acpl = round(sum(acpl_values) / len(acpl_values)) if acpl_values else 0
+    acc_values = [g["accuracy"] for g in games_brief if g.get("accuracy")]
+    avg_accuracy = round(sum(acc_values) / len(acc_values)) if acc_values else 0
     openings = sorted({g["opening"] for g in games_brief if g.get("opening")})
     class_counts: Dict[str, int] = {}
     for r in reports:
@@ -631,6 +736,8 @@ def build_report_context(reports: List[Dict[str, Any]], platform: str,
         "date_range": _date_range(dates),
         "habit": habit,
         "acpl": avg_acpl,
+        "avg_accuracy": avg_accuracy,
+        "rating": rating,
         "openings": openings,
         "class_counts": class_counts,
         "games_brief": games_brief,
@@ -661,6 +768,11 @@ _REPORT_SYSTEM = (
     "exclamation, real chess slang. No filler like 'chess is a game of...'.\n"
     "- Write so a kid and their parent can both follow it.\n"
     "- Never invent moves, names, ratings, or dates; stick to the facts given.\n"
+    "- When a rating is given, pitch the vocabulary and depth to that level — "
+    "simple words for beginners, sharper shorthand for stronger kids.\n"
+    "- Use every extra fact you are given: move accuracy, the type of mistake "
+    "(hung piece, fork), and alternative moves with their evaluations. Show "
+    "the player what else was on the table.\n"
     "- Write in Markdown, keep every heading and the '---' rules exactly as "
     "given, and vary the prose between them. Keep the report under ~700 words."
 ).replace("{site_name}", SITE_NAME)
@@ -676,9 +788,12 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
         f"Results: {ctx.get('wins')} wins, {ctx.get('losses')} losses, "
         f"{ctx.get('draws')} draws",
         f"Average centipawn loss per move (ACPL): {ctx.get('acpl')}",
+        f"Average move accuracy: {ctx.get('avg_accuracy')}%",
         f"Recurring habit: {habit}",
         f"Suggested drill: {drill}",
     ]
+    if ctx.get("rating"):
+        facts.append(f"Player rating: ~{ctx['rating']}")
     openings = ctx.get("openings") or []
     if openings:
         facts.append("Openings played: " + ", ".join(openings[:6]))
@@ -694,6 +809,7 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
         facts.append("Games: " + "; ".join(
             f"vs {g['opponent']} ({g['outcome']}, {g['result']})"
             + (f", {g['opening']}" if g.get("opening") else "")
+            + (f", accuracy {g['accuracy']}%" if g.get("accuracy") else "")
             for g in brief[:12]
         ))
     moments = ctx.get("moments") or []
@@ -703,6 +819,13 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
             parts = [f"- {m['san']} at ply {m['ply']} ({m['phase']}, lost ~{m['cp_loss']} pawns)"]
             if m.get("best"):
                 parts.append(f"engine preferred {m['best']}")
+            if m.get("threat"):
+                parts.append(f"mistake type: {m['threat']}")
+            candidates = m.get("candidates") or []
+            if candidates:
+                parts.append("alternative moves: " + ", ".join(
+                    f"{c['san']} ({c['cp'] / 100.0:+.1f})" for c in candidates
+                ))
             if m.get("line"):
                 parts.append(f"engine line: {m['line']}")
             if m.get("fen"):
@@ -1096,6 +1219,49 @@ def _open_engine(path: str = STOCKFISH_PATH) -> chess.engine.SimpleEngine:
     return chess.engine.SimpleEngine.popen_uci(path)
 
 
+def _analyze_candidates(engine: chess.engine.SimpleEngine, fen: str,
+                        depth: int) -> List[Dict[str, Any]]:
+    """Top alternative moves (Multi-PV) for a position, from the side to move."""
+    try:
+        board = chess.Board(fen)
+    except Exception:
+        return []
+    turn = board.turn
+    try:
+        result = engine.analyse(board, chess.engine.Limit(depth=depth), multipv=3)
+    except Exception:
+        return []
+    lines = result if isinstance(result, list) else [result]
+    candidates: List[Dict[str, Any]] = []
+    for info in lines:
+        pv = info.get("pv") or []
+        if not pv:
+            continue
+        try:
+            san = board.san(pv[0])
+        except Exception:
+            san = pv[0].uci()
+        candidates.append({
+            "san": san,
+            "uci": pv[0].uci(),
+            "cp": _score_to_cp(info.get("score"), turn),
+        })
+    return candidates[:3]
+
+
+def _enrich_blunders(reports: List[Dict[str, Any]],
+                     engine: chess.engine.SimpleEngine, depth: int,
+                     top_n: int = 4) -> None:
+    """Attach candidate moves to the most costly blunders across the set."""
+    blunders = [b for r in reports for b in (r.get("blunders") or [])]
+    blunders.sort(key=lambda b: -(b.get("cp_loss") or 0))
+    for b in blunders[:top_n]:
+        fen = b.get("fen")
+        if not fen:
+            continue
+        b["candidates"] = _analyze_candidates(engine, fen, depth)
+
+
 def _short_version(markdown: str) -> str:
     """Pull the '## Short version' paragraph out of a generated report."""
     marker = "## Short version"
@@ -1115,7 +1281,8 @@ def run_analysis(platform: str, username: str, kid_name: str = "Player",
                  max_games: int = 50, since_days: int = 30,
                  engine: Optional[chess.engine.SimpleEngine] = None,
                  notes: Optional[str] = None,
-                 answers: Optional[List[str]] = None) -> Dict[str, Any]:
+                 answers: Optional[List[str]] = None,
+                 rating: Optional[int] = None) -> Dict[str, Any]:
     """Run the full intake pipeline and return a structured result.
 
     The result contains the full markdown report, a short summary text, the top
@@ -1144,6 +1311,10 @@ def run_analysis(platform: str, username: str, kid_name: str = "Player",
             except Exception:
                 # One unanalysable game should not fail the whole report.
                 continue
+        try:
+            _enrich_blunders(reports, engine, ANALYSIS_DEPTH)
+        except Exception:
+            pass
     finally:
         if owns_engine and engine is not None:
             try:
@@ -1155,7 +1326,8 @@ def run_analysis(platform: str, username: str, kid_name: str = "Player",
     top_habit = habits[0]["habit"] if habits else "Piece safety"
     points_lost = round(sum(r.get("points_lost", 0.0) for r in reports), 2)
     context = build_report_context(
-        reports, platform, username, top_habit, notes=notes, answers=answers
+        reports, platform, username, top_habit, notes=notes, answers=answers,
+        rating=rating,
     )
     markdown = generate_report(kid_name, top_habit, len(reports), context=context)
 

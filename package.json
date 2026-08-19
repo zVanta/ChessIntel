@@ -14,6 +14,7 @@
     "dev:all": "concurrently -k -n service,web -c blue,green \"npm run dev:service\" \"npm run dev\""
   },
   "dependencies": {
+    "@lichess-org/chessground": "^10.1.1",
     "better-sqlite3": "11.5.0",
     "chess.js": "1.0.0",
     "next": "14.2.35",

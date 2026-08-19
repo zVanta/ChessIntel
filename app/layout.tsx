@@ -4,6 +4,9 @@ import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import LogoutButton from "@/components/LogoutButton";
 import { getSessionUser, isAdmin } from "@/lib/auth";
 import "./globals.css";
+import "@lichess-org/chessground/assets/chessground.base.css";
+import "@lichess-org/chessground/assets/chessground.brown.css";
+import "@lichess-org/chessground/assets/chessground.cburnett.css";
 
 const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME || "Checkmate Coach";
 

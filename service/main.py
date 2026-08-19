@@ -34,6 +34,7 @@ class AnalyzeRequest(BaseModel):
     since_days: int = 30
     notes: Optional[str] = None
     answers: Optional[List[str]] = None
+    rating: Optional[int] = None
 
 
 class AnalyzePgnRequest(BaseModel):
@@ -65,6 +66,7 @@ def analyze(req: AnalyzeRequest) -> Dict[str, Any]:
         since_days=req.since_days,
         notes=req.notes,
         answers=req.answers,
+        rating=req.rating,
     )
 
 
