@@ -135,3 +135,21 @@ export interface MistakeCard {
   last_review_at: number | null;
   created_at: string;
 }
+
+export interface Repertoire {
+  id: number;
+  kid_id: number;
+  name: string;
+  color: "white" | "black";
+  created_at: string;
+}
+
+export interface RepertoireMove {
+  id: number;
+  repertoire_id: number;
+  fen_before: string;
+  uci: string;
+  san: string;
+  fen_after: string;
+  created_at: string;
+}

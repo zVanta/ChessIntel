@@ -69,6 +69,11 @@ class PuzzleExplainRequest(BaseModel):
     reveal: bool = False
 
 
+class RepertoireSuggestRequest(BaseModel):
+    fen: str
+    num_moves: int = 5
+
+
 @app.get("/health")
 def health() -> Dict[str, str]:
     return {"status": "ok"}
@@ -219,6 +224,26 @@ def puzzle_explain(req: PuzzleExplainRequest) -> Dict[str, str]:
     except Exception as exc:  # pragma: no cover - depends on live keys
         return {"answer": f"Sorry — the coach is unreachable right now ({exc})."}
 
+
+@app.post("/repertoire-suggest")
+def repertoire_suggest(req: RepertoireSuggestRequest) -> Dict[str, Any]:
+    """Stockfish's top moves for a position, used by the repertoire builder."""
+    try:
+        board = chessintel_clone.chess.Board(req.fen)
+    except Exception:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="invalid fen")
+    engine = chessintel_clone._open_engine()
+    try:
+        moves = chessintel_clone.suggest_moves(
+            engine, req.fen, chessintel_clone.ANALYSIS_DEPTH, num=req.num_moves
+        )
+    finally:
+        try:
+            engine.quit()
+        except Exception:
+            pass
+    return {"fen": " ".join(board.fen().split()[:4]), "moves": moves}
 
 
 @app.post("/ocr")

@@ -117,6 +117,23 @@ export async function explainPuzzle(payload: PuzzleExplainPayload): Promise<{ an
   return postJson<{ answer: string }>("/puzzle-explain", payload);
 }
 
+export interface RepertoireSuggestion {
+  uci: string;
+  san: string;
+  cp: number;
+}
+
+/** Stockfish's top moves for a position, for the repertoire builder. */
+export async function suggestRepertoireMoves(
+  fen: string,
+  numMoves = 5
+): Promise<{ fen: string; moves: RepertoireSuggestion[] }> {
+  return postJson<{ fen: string; moves: RepertoireSuggestion[] }>("/repertoire-suggest", {
+    fen,
+    num_moves: numMoves,
+  });
+}
+
 /** Convert a scoresheet photo (bytes) to PGN via the FastAPI service. */
 export async function ocrScoresheet(imageBuffer: Buffer, kidName?: string): Promise<string> {
   const form = new FormData();

@@ -1693,6 +1693,45 @@ def _analyze_candidates(engine: chess.engine.SimpleEngine, fen: str,
     return candidates[:3]
 
 
+def suggest_moves(engine: chess.engine.SimpleEngine, fen: str,
+                  depth: int, num: int = 5) -> List[Dict[str, Any]]:
+    """Stockfish's top ``num`` legal moves for a position (for the repertoire
+    builder's "other moves" panel). Returns ``[{"uci", "san", "cp"}, ...]``.
+
+    ``cp`` is centipawns from the side-to-move's perspective (mate ≈ ±10000).
+    """
+    try:
+        board = chess.Board(fen)
+    except Exception:
+        return []
+    legal = board.legal_moves.count()
+    if legal == 0:
+        return []
+    requested = max(1, min(num, legal))
+    turn = board.turn
+    try:
+        result = engine.analyse(board, chess.engine.Limit(depth=depth), multipv=requested)
+    except Exception:
+        return []
+    lines = result if isinstance(result, list) else [result]
+    suggestions: List[Dict[str, Any]] = []
+    for info in lines:
+        pv = info.get("pv") or []
+        if not pv:
+            continue
+        move = pv[0]
+        try:
+            san = board.san(move)
+        except Exception:
+            san = move.uci()
+        suggestions.append({
+            "uci": move.uci(),
+            "san": san,
+            "cp": _score_to_cp(info.get("score"), turn),
+        })
+    return suggestions[:num]
+
+
 def _enrich_blunders(reports: List[Dict[str, Any]],
                      engine: chess.engine.SimpleEngine, depth: int,
                      top_n: int = 4) -> None:

@@ -12,6 +12,8 @@ import type {
   KidWithMeta,
   MistakeCard,
   ProgressRow,
+  Repertoire,
+  RepertoireMove,
   Report,
   User,
 } from "./types";
@@ -108,6 +110,24 @@ function migrate(db: Database.Database): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS repertoires (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kid_id INTEGER NOT NULL REFERENCES kids(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      color TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS repertoire_moves (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      repertoire_id INTEGER NOT NULL REFERENCES repertoires(id) ON DELETE CASCADE,
+      fen_before TEXT NOT NULL,
+      uci TEXT NOT NULL,
+      san TEXT NOT NULL,
+      fen_after TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS funding_events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       stripe_invoice_id TEXT NOT NULL UNIQUE,
@@ -120,6 +140,8 @@ function migrate(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_games_report ON games(report_id);
     CREATE INDEX IF NOT EXISTS idx_followups_kid ON drill_followups(kid_id);
     CREATE INDEX IF NOT EXISTS idx_cards_kid ON mistake_cards(kid_id);
+    CREATE INDEX IF NOT EXISTS idx_repertoires_kid ON repertoires(kid_id);
+    CREATE INDEX IF NOT EXISTS idx_repertoire_moves ON repertoire_moves(repertoire_id);
   `);
 
   // Idempotent column additions for older databases. Must run BEFORE creating
@@ -589,6 +611,65 @@ export function reviewMistakeCard(cardId: number, correct: boolean): MistakeCard
     .run(repetitions, intervalDays, lapses, dueAt, Date.now(), cardId);
 
   return getDb().prepare(`SELECT * FROM mistake_cards WHERE id = ?`).get(cardId) as MistakeCard;
+}
+
+// ---------------------------------------------------------------------------
+// Opening repertoires
+// ---------------------------------------------------------------------------
+
+export function createRepertoire(kidId: number, name: string, color: "white" | "black"): Repertoire {
+  const info = getDb()
+    .prepare(`INSERT INTO repertoires (kid_id, name, color) VALUES (?, ?, ?)`)
+    .run(kidId, name, color);
+  return getDb()
+    .prepare(`SELECT * FROM repertoires WHERE id = ?`)
+    .get(Number(info.lastInsertRowid)) as Repertoire;
+}
+
+export function getRepertoire(id: number): Repertoire | undefined {
+  return getDb().prepare(`SELECT * FROM repertoires WHERE id = ?`).get(id) as Repertoire | undefined;
+}
+
+export function listRepertoires(kidId: number): Repertoire[] {
+  return getDb()
+    .prepare(`SELECT * FROM repertoires WHERE kid_id = ? ORDER BY created_at DESC, id DESC`)
+    .all(kidId) as Repertoire[];
+}
+
+export function deleteRepertoire(id: number): void {
+  getDb().prepare(`DELETE FROM repertoires WHERE id = ?`).run(id);
+}
+
+export function addRepertoireMove(
+  repertoireId: number,
+  fenBefore: string,
+  uci: string,
+  san: string,
+  fenAfter: string
+): RepertoireMove {
+  const info = getDb()
+    .prepare(
+      `INSERT INTO repertoire_moves (repertoire_id, fen_before, uci, san, fen_after)
+       VALUES (?, ?, ?, ?, ?)`
+    )
+    .run(repertoireId, fenBefore, uci, san, fenAfter);
+  return getDb()
+    .prepare(`SELECT * FROM repertoire_moves WHERE id = ?`)
+    .get(Number(info.lastInsertRowid)) as RepertoireMove;
+}
+
+export function getRepertoireMoves(repertoireId: number): RepertoireMove[] {
+  return getDb()
+    .prepare(`SELECT * FROM repertoire_moves WHERE repertoire_id = ? ORDER BY id ASC`)
+    .all(repertoireId) as RepertoireMove[];
+}
+
+export function getRepertoireMove(id: number): RepertoireMove | undefined {
+  return getDb().prepare(`SELECT * FROM repertoire_moves WHERE id = ?`).get(id) as RepertoireMove | undefined;
+}
+
+export function deleteRepertoireMove(id: number): void {
+  getDb().prepare(`DELETE FROM repertoire_moves WHERE id = ?`).run(id);
 }
 
 // ---------------------------------------------------------------------------

@@ -276,6 +276,30 @@ class MateThenWinEngine:
         return {"score": make_score(700)}
 
 
+class SuggestEngine:
+    """Returns the first N legal moves as multi-PV suggestions."""
+
+    def analyse(self, board, limit, multipv=1):
+        moves = list(board.legal_moves)[:multipv]
+        infos = [{"score": make_score(60 - 10 * i), "pv": [mv]} for i, mv in enumerate(moves)]
+        return infos if multipv > 1 else infos[0] if infos else {}
+
+
+def test_suggest_moves_returns_ranked_moves():
+    eng = SuggestEngine()
+    board = chess.Board()
+    moves = cc.suggest_moves(eng, board.fen(), depth=1, num=3)
+    assert len(moves) == 3
+    assert all({"uci", "san", "cp"} <= set(m) for m in moves)
+    # Scores are descending from the engine.
+    assert moves[0]["cp"] > moves[1]["cp"] > moves[2]["cp"]
+
+
+def test_suggest_moves_empty_on_bad_fen():
+    eng = SuggestEngine()
+    assert cc.suggest_moves(eng, "not a fen", depth=1, num=3) == []
+
+
 def test_cp_loss_ignores_mate_to_win():
     # A forced mate (~10000cp) converted to a still-winning +7.1 is not a loss.
     assert cc._cp_loss(9997, 710) == 0
