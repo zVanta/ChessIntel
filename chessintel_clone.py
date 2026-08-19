@@ -92,19 +92,12 @@ def _score_to_cp(score: Any, color: chess.Color) -> int:
     Compatible with python-chess v1 (``Score`` with ``.white()``/``.score()``)
     and the v2 rewrite (``PovScore`` with ``.pov()``, and ``Cp``/``Mate``).
     """
-    # v2 PovScore has .pov(color) but no .score() method.
+    # v2 PovScore has .pov(color) but no .score() method. Delegate to
+    # python-chess's own Score.score(mate_score=...) conversion, which already
+    # handles every mate case — including mate-in-0 (a delivered checkmate) —
+    # with the correct sign: the mated side gets -10000, the winner +10000.
     if not (hasattr(score, "score") and callable(score.score)):
-        relative = score.pov(color)
-        if relative.is_mate():
-            mate_in = relative.mate()
-            if mate_in > 0:
-                return 10000
-            if mate_in < 0:
-                return -10000
-            # mate_in == 0: checkmate is already on the board, so the side to
-            # move is mated. "color" wins unless it is that mated side.
-            return -10000 if getattr(score, "turn", None) == color else 10000
-        return relative.score(mate_score=10000)
+        return score.pov(color).score(mate_score=10000)
 
     # Raw score from White's perspective (v1 Score, or v2 Cp/Mate).
     if score.is_mate():
@@ -1020,55 +1013,93 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
 
 def _build_markdown_report(kid_name: str, habit: str, game_count: int,
                            drill: str, ctx: Dict[str, Any]) -> str:
-    """Deterministic markdown report used when no LLM is configured."""
+    """Deterministic markdown report used when no LLM is configured.
+
+    Reads like a coach's letter, not a filled-in form: each moment is phrased
+    differently, and a move is never pitted against itself.
+    """
     platform = ctx.get("platform") or "online"
     date_range = ctx.get("date_range") or "recent games"
     wins = ctx.get("wins", 0)
     losses = ctx.get("losses", 0)
     draws = ctx.get("draws", 0)
-    brief = ctx.get("games_brief") or []
     moments = ctx.get("moments") or []
+    openings = ctx.get("openings") or []
+    avg_accuracy = ctx.get("avg_accuracy") or 0
 
+    def _plural(n: int, word: str) -> str:
+        if n == 1:
+            return f"1 {word}"
+        return f"{n} {word}es" if word.endswith("s") else f"{n} {word}s"
+
+    results = f"{_plural(wins, 'win')}, {_plural(losses, 'loss')}, {_plural(draws, 'draw')}"
+
+    # ---- Short version ------------------------------------------------------
     if moments:
         top = moments[0]
         best_move = _safe_best(top)
-        best = f" instead of {best_move}" if best_move else ""
-        seen_line = f"Yes — {top['san']}{best} vs {top['opponent']}"
+        key = f"{top['san']}" + (f" (Stockfish preferred {best_move})" if best_move else "")
+        short = (
+            f"{kid_name} played {game_count} game{'s' if game_count != 1 else ''} this set — "
+            f"{results}. The one pattern behind the points lost is \"{habit}\", and the "
+            f"clearest example is {key} vs {top['opponent']}. This week is about a single "
+            f"trainable habit: {habit}"
+        )
     else:
-        seen_line = "Not in this set — keep watching"
+        short = (
+            f"{kid_name} played {game_count} game{'s' if game_count != 1 else ''} this set — "
+            f"{results}. The pattern to track is \"{habit}\". This week is about one habit: {habit}"
+        )
 
-    opponent_lines = "  \n".join(
-        f"vs {g['opponent']} — {g['result']}" for g in brief[:12]
-    ) or "No game details available."
+    # ---- What's working ------------------------------------------------------
+    if openings:
+        positives = (
+            f"**The openings are a strength.** {kid_name} reached {', '.join(openings[:3])} "
+            f"and played them confidently, and the {_plural(wins, 'win')} were converted "
+            "cleanly. That foundation is real — it is exactly what the next habit builds on."
+        )
+    else:
+        positives = (
+            f"**Finishing wins.** {kid_name} converted {_plural(wins, 'winning game')} "
+            "without giving the point back. That is a real skill, and the foundation to build on."
+        )
 
+    # ---- Moments, each phrased differently ----------------------------------
+    moment_intros = [
+        "The moment that shows the pattern most clearly.",
+        "A second example, from a different game, tells the same story.",
+        "One more — the same habit, in a different phase of the game.",
+    ]
+    moment_takeaways = [
+        "The fix is the pause: before moving, name what the move actually improves.",
+        "Same lesson, new shape — check what you leave behind before you commit.",
+        "It keeps coming back to one thing: have a reason for the move, not just a move.",
+    ]
     moment_blocks = []
-    for i, m in enumerate(moments[:3], 1):
+    for i, m in enumerate(moments[:3]):
+        san = m.get("san") or "?"
         best_move = _safe_best(m)
-        best_heading = f" instead of {best_move}" if best_move else ""
-        best_body = f" The engine wanted {best_move}." if best_move else ""
-        fix_line = (
-            f"**Fix:** before you play a move like {m['san']}, stop and name what it "
-            f"leaves behind — then find {best_move}." if best_move else
-            f"**Fix:** before you play {m['san']}, pause and name the piece it leaves "
-            "undefended."
-        )
+        opp = m.get("opponent") or "your opponent"
+        phase = m.get("phase") or "middlegame"
+        cost = m.get("cp_loss") or 0
+        ply = m.get("ply")
+        at = f" at ply {ply}" if ply else ""
+        engine_part = f" Stockfish wanted {best_move} there." if best_move else ""
         moment_blocks.append(
-            f"### Moment {i} — {m['san']}{best_heading} (vs {m['opponent']})\n\n"
-            f"In the {m['phase']} against {m['opponent']}, {m['san']} at ply "
-            f"{m['ply']} cost about {m['cp_loss']} pawns.{best_body} That's the "
-            f"kind of move that feels fine and then quietly loses the game.\n\n"
-            f"{fix_line}"
+            f"### {i + 1}. {moment_intros[i]}\n\n"
+            f"In the {phase} against {opp}, {san}{at} cost about {cost} pawns.{engine_part} "
+            f"{moment_takeaways[i]}"
         )
 
-    # Build a drill that references this game's actual key moment.
+    # ---- Drill ----------------------------------------------------------------
     if moments:
         top = moments[0]
         best_move = _safe_best(top)
         if best_move:
             drill_steps = (
                 f"**{habit} — the 15-minute sharpener**\n\n"
-                f"1. Set up the position just before {top['san']} in this game.\n"
-                f"2. Find the engine's move ({best_move}) and say out loud why it's safer.\n"
+                f"1. Set up the position just before {top['san']} against {top['opponent']}.\n"
+                f"2. Find the engine's move ({best_move}) and say out loud why it is safer.\n"
                 f"3. Do the same for the other moments below.\n\n"
                 f"**Got it when:** you name the safer move in under 10 seconds, 3 in a row.\n\n"
                 f"{drill}"
@@ -1076,7 +1107,7 @@ def _build_markdown_report(kid_name: str, habit: str, game_count: int,
         else:
             drill_steps = (
                 f"**{habit} — the 15-minute sharpener**\n\n"
-                f"1. Set up the position just before {top['san']} in this game.\n"
+                f"1. Set up the position just before {top['san']} against {top['opponent']}.\n"
                 f"2. Name what the move leaves undefended.\n"
                 f"3. Write down the safer alternative.\n\n"
                 f"**Got it when:** you spot the hang before you move, 3 times in a row.\n\n"
@@ -1085,110 +1116,56 @@ def _build_markdown_report(kid_name: str, habit: str, game_count: int,
     else:
         drill_steps = (
             f"**{habit} — the 15-minute sharpener**\n\n"
-            f"1. Re-play each key mistake moment on a board.\n"
+            f"1. Re-play each key moment on a board.\n"
             f"2. Name what the move leaves behind.\n"
             f"3. Write down the safer alternative.\n\n"
             f"**Got it when:** you can explain the fix in one sentence.\n\n"
             f"{drill}"
         )
 
-    short_top = ""
+    coach_brief = f"Pre-lesson brief: {kid_name}'s recurring leak is \"{habit}\"."
     if moments:
-        m = moments[0]
-        short_top = (
-            f" The key moment: {m['san']}"
-            + (f" instead of {m['best']}" if m.get("best") else "")
-            + f" vs {m['opponent']}."
-        )
+        coach_brief += " It showed up in: " + "; ".join(
+            f"{m['san']} (ply {m['ply']}) vs {m['opponent']}" for m in moments[:3]
+        ) + "."
+    phase_word = "endgame" if (moments and moments[0].get("phase") == "endgame") else "middlegame"
+    coach_brief += (
+        f" At the next lesson, show a few {phase_word} positions and ask {kid_name} "
+        "to name the danger squares before moving — ten focused minutes."
+    )
+
+    accuracy_note = f"Move accuracy averaged {avg_accuracy}%." if avg_accuracy else ""
 
     return "\n\n---\n\n".join([
         f"# {kid_name} — Game Set Report",
         f"{game_count} Online Games · {platform} · {date_range}",
+        "## Short version",
+        short,
+        f"**Baseline read:** {game_count} recent online games  \n"
+        f"**Pattern found:** {habit}  \n"
+        f"**The habit to train:** {habit}  \n"
+        "**Tracking:** Begins with this report",
+        "## First, the wide view",
         (
-            "## Short version"
+            f"Across this set — {results} — the thing costing the most points is \"{habit}\". "
+            f"{accuracy_note} It is a habit, not a talent ceiling, and habits are the most "
+            "fixable thing in chess."
         ),
-        (
-            f"{kid_name} played {game_count} game{'s' if game_count != 1 else ''} this set — "
-            f"{wins} win{'s' if wins != 1 else ''}, {losses} loss{'es' if losses != 1 else ''}, "
-            f"{draws} draw{'s' if draws != 1 else ''}. The big pattern: \"{habit}\"."
-            f"{short_top} This week is about one simple habit: {drill}"
-        ),
-        (
-            f"**Baseline read:** {game_count} recent online games  \n"
-            f"**Pattern found:** {habit}  \n"
-            f"**Seen in this game:** {seen_line}  \n"
-            f"**The habit to train:** {drill}  \n"
-            "**Tracking:** Begins with this report"
-        ),
-        (
-            "## First, the wide view"
-        ),
-        (
-            f"Before this set we reviewed {game_count} of {kid_name}'s recent games. "
-            f"The good news: the wins are real and the finishes are clean. The thing "
-            f"costing the most points is \"{habit}\" — and it shows up move after move, "
-            "which means it's a habit, not a talent ceiling. Habits are fixable, and "
-            "that's exactly what we train this week."
-        ),
-        (
-            "## Now, the games you sent us"
-        ),
-        (
-            f"This set covers {game_count} games ({platform}, {date_range}). "
-            f"Results: {wins} win{'s' if wins != 1 else ''}, "
-            f"{losses} loss{'es' if losses != 1 else ''}, "
-            f"{draws} draw{'s' if draws != 1 else ''}.\n\n"
-            f"Opponents:\n\n{opponent_lines}"
-        ),
-        (
-            "## What's working"
-        ),
-        (
-            "**Converting wins.** When the position is good, the finish is clean — "
-            f"{kid_name} converted {wins} winning game{'s' if wins != 1 else ''} without "
-            "giving the point back. That's a real skill, and it's the foundation we "
-            "build on."
-        ),
-        (
-            f"## The pattern: {habit}"
-        ),
-        (
-            "The baseline showed this, and it's the pattern to track going forward."
-        ),
+        "## What's working",
+        positives,
+        "## The patterns costing you points",
         *moment_blocks,
+        "## Your bottleneck right now",
         (
-            "## The recurring weakness across the set"
+            f"If you fix one thing this month, fix \"{habit}\". Everything else is already "
+            "good enough to win; this is the one leak that shows up move after move."
         ),
-        (
-            f"\"{habit}\" is the habit that costs the most points. The fix is simple "
-            "in concept: before every move, take one second to check what the move "
-            "leaves behind. One second, every move — that's the whole assignment."
-        ),
-        (
-            "## One drill for this week"
-        ),
-        (
-            drill_steps
-        ),
-        (
-            "## For your coach"
-        ),
-        (
-            f"Pre-lesson brief: {kid_name}'s recurring leak is \"{habit}\". "
-            + (
-                " It showed up in: " + "; ".join(
-                    f"{m['san']} (ply {m['ply']}) vs {m['opponent']}" for m in moments[:3]
-                ) + "."
-                if moments else ""
-            )
-            + " At the start of the next lesson, show a few middlegame positions and ask "
-            f"{kid_name} to name the danger squares before moving — ten focused minutes "
-            "will sharpen the reflex."
-        ),
-        (
-            f"Questions? Email [{SITE_CONTACT}](mailto:{SITE_CONTACT})  \n"
-            f"— The {SITE_NAME} team"
-        ),
+        "## One drill for this week",
+        drill_steps,
+        "## For your coach",
+        coach_brief,
+        f"Questions? Email [{SITE_CONTACT}](mailto:{SITE_CONTACT})  \n"
+        f"— The {SITE_NAME} team",
         _REPORT_DISCLOSURE,
         (
             "*One more thing: online games show habits, but tournament games are where "
