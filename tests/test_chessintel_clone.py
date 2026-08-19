@@ -243,6 +243,25 @@ def test_blunder_threat_labels():
     assert cc._blunder_threat(chess.Board()) is None
 
 
+def test_threat_detail_names_hanging_piece():
+    board = chess.Board("6k1/8/8/8/1n6/P7/8/4K3 w - - 0 1")
+    detail = cc._threat_detail(board)
+    assert detail is not None
+    assert "knight" in detail
+    assert "b4" in detail
+    assert "hanging" in detail
+
+
+def test_threat_detail_names_royal_fork():
+    # White's Nc7+ forks the king (e8) and queen (e6) — a royal fork.
+    board = chess.Board("4k3/8/4q3/3N4/8/8/8/7K w - - 0 1")
+    detail = cc._threat_detail(board)
+    assert detail is not None
+    assert "Nc7" in detail
+    assert "e8" in detail
+    assert "e6" in detail
+
+
 # ---------------------------------------------------------------------------
 # report prompt pre-fills the real moves (no hallucinated placeholders)
 # ---------------------------------------------------------------------------

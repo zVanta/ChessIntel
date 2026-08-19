@@ -66,6 +66,9 @@ USER_AGENT: str = "CheckmateCoach/1.0 (https://github.com/zVanta/ChessIntel)"
 
 ANALYSIS_DEPTH: int = int(os.environ.get("ANALYSIS_DEPTH", "14"))
 BLUNDER_THRESHOLD_CP: int = 250
+# Once the mover is already this far behind, later moves are noise — the game
+# is decided, so don't flag them as fresh blunders.
+DECISIVE_CP: int = 600
 
 LICHESS_GAMES_URL: str = "https://lichess.org/api/games/user/{username}"
 CHESSCOM_ARCHIVES_URL: str = "https://api.chess.com/pub/player/{username}/games/archives"
@@ -186,7 +189,9 @@ def _opponent_forks(board: chess.Board) -> List[Dict[str, Any]]:
         board.push(move)
         attacked: List[str] = []
         for square, piece in board.piece_map().items():
-            if piece.color == mover and piece.piece_type != chess.KING:
+            # Include the king: a royal fork (a check that also attacks a piece)
+            # still counts as walking into a fork.
+            if piece.color == mover:
                 if board.attackers(opp, square):
                     attacked.append(chess.square_name(square))
         board.pop()
@@ -206,6 +211,26 @@ def _blunder_threat(board_after: chess.Board) -> Optional[str]:
         return "hung a piece"
     if _opponent_forks(board_after):
         return "walked into a fork"
+    return None
+
+
+def _threat_detail(board_after: chess.Board) -> Optional[str]:
+    """Plain-language detail of the tactical damage, computed in code.
+
+    Used by the report so the LLM never has to read a raw FEN and hallucinate
+    piece positions.
+    """
+    board = board_after.copy()
+    hung = _hanging_squares(board)
+    if hung:
+        square = hung[0]
+        piece = board.piece_at(square)
+        name = chess.piece_name(piece.piece_type) if piece else "piece"
+        return f"left a {name} on {chess.square_name(square)} hanging"
+    forks = _opponent_forks(board)
+    if forks:
+        f = forks[0]
+        return f"the reply {f['san']} attacks {' and '.join(f['squares'])}"
     return None
 
 
@@ -448,7 +473,7 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
         move_accuracy = _accuracy_from_loss(loss_pct)
         accuracies.append(move_accuracy)
         (acc_white if mover == chess.WHITE else acc_black).append(move_accuracy)
-        if cp_loss >= BLUNDER_THRESHOLD_CP:
+        if cp_loss >= BLUNDER_THRESHOLD_CP and score_before > -DECISIVE_CP:
             phase = phase_of(ply)
             # NOTE: board.san(move) already includes the correct check (+) /
             # checkmate (#) annotation, so never append another one.
@@ -463,6 +488,7 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
                 "fen": fen_before,
                 "line": pv_line,
                 "threat": _blunder_threat(board),
+                "threat_detail": _threat_detail(board),
             })
             total_cp_lost += cp_loss
 
@@ -718,6 +744,7 @@ def build_report_context(reports: List[Dict[str, Any]], platform: str,
                 "fen": b.get("fen"),
                 "line": b.get("line"),
                 "threat": b.get("threat"),
+                "threat_detail": b.get("threat_detail"),
                 "candidates": b.get("candidates") or [],
             })
         played = _played_date(r.get("played_at"))
@@ -770,9 +797,10 @@ _REPORT_SYSTEM = (
     "the engine's line, the position FEN, the cost in pawns, the opponent).\n"
     "- Copy move notation EXACTLY as given (+ / # / x / O-O / O-O-O). Never "
     "guess, add, or change it.\n"
-    "- Read the FEN: describe the position truthfully — name squares, pawn "
-    "structure, piece coordination, king activity, open files. Explain WHY the "
-    "engine's move is better in concrete chess terms, not just that it is.\n"
+    "- NEVER describe the board or invent pieces, squares, or material. You have "
+    "no board view — only the facts given (the played move, the engine's preferred "
+    "move and line, the cost, and the 'what happened' note). Explain using exactly "
+    "those facts; never add a square or piece that is not in them.\n"
     "- VARY YOUR WRITING: never repeat the same sentence opener, the same "
     "'Fix:' formula, or the same drill template twice. Every moment should read "
     "like a different paragraph, not a re-filled form. Vary how you deliver the "
@@ -834,12 +862,14 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
         ))
     moments = ctx.get("moments") or []
     if moments:
-        facts.append("Key mistake moments (position + engine line included):")
+        facts.append("Key mistake moments (engine line included):")
         for m in moments:
             parts = [f"- {m['san']} at ply {m['ply']} ({m['phase']}, lost ~{m['cp_loss']} pawns)"]
             if m.get("best"):
                 parts.append(f"engine preferred {m['best']}")
-            if m.get("threat"):
+            if m.get("threat_detail"):
+                parts.append(f"what happened: {m['threat_detail']}")
+            elif m.get("threat"):
                 parts.append(f"mistake type: {m['threat']}")
             candidates = m.get("candidates") or []
             if candidates:
@@ -848,8 +878,6 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
                 ))
             if m.get("line"):
                 parts.append(f"engine line: {m['line']}")
-            if m.get("fen"):
-                parts.append(f"position before move (FEN): {m['fen']}")
             parts.append(f"opponent: {m['opponent']}")
             facts.append("; ".join(parts))
     if ctx.get("notes"):
