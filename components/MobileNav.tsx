@@ -21,6 +21,7 @@ export default function MobileNav({ loggedIn, isAdmin, credits, siteName }: Prop
         { href: "/reports", label: "Reports" },
         { href: "/progress", label: "Progress" },
         { href: "/train", label: "Train" },
+        { href: "/puzzles", label: "Puzzles" },
         { href: "/profile", label: "Profile" },
         ...(isAdmin ? [{ href: "/admin", label: "Admin" }] : []),
       ]

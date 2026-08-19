@@ -60,6 +60,15 @@ class AskRequest(BaseModel):
     notes: Optional[str] = None
 
 
+class PuzzleExplainRequest(BaseModel):
+    fen: str = ""
+    played_move: str
+    solution_move: str = ""
+    themes: List[str] = []
+    kid_name: str = "Player"
+    reveal: bool = False
+
+
 @app.get("/health")
 def health() -> Dict[str, str]:
     return {"status": "ok"}
@@ -160,6 +169,50 @@ def ask(req: AskRequest) -> Dict[str, str]:
     user = f"Player: {req.kid_name}.\nQuestion: {req.question}"
     if req.notes:
         user += f"\nContext: {req.notes}"
+    try:
+        answer = llm.complete(system, user)
+        return {"answer": answer}
+    except Exception as exc:  # pragma: no cover - depends on live keys
+        return {"answer": f"Sorry — the coach is unreachable right now ({exc})."}
+
+
+def _puzzle_explain_prompt(
+    kid_name: str, themes: List[str], played_move: str, solution_move: str, reveal: bool
+) -> str:
+    """Build the coach prompt for a wrong puzzle move.
+
+    Deliberately excludes the raw FEN: a language model cannot read a board
+    position reliably. It gets the tactical themes (fork, skewer, mate, ...)
+    and the move names, which is enough to explain the idea without inventing
+    squares or pieces.
+    """
+    theme_text = ", ".join(themes) if themes else "tactics"
+    if reveal:
+        focus = (
+            f"The correct move is {solution_move}. Explain the idea behind it and "
+            f"why it works, using the theme(s): {theme_text}."
+        )
+    else:
+        focus = (
+            f"The correct idea is hidden. Give a hint toward the right idea using "
+            f"the theme(s): {theme_text} — do NOT name the exact move."
+        )
+    return f"Player: {kid_name}.\nThey played {played_move}, which is not the solution.\n{focus}"
+
+
+@app.post("/puzzle-explain")
+def puzzle_explain(req: PuzzleExplainRequest) -> Dict[str, str]:
+    """Explain a wrong move in a tactical puzzle (hint or full reveal)."""
+    import llm  # noqa: F401
+
+    system = (
+        "You are a patient junior chess coach helping with a tactical puzzle. "
+        "Be encouraging and concrete, under 120 words. Never invent a square, "
+        "piece, or line that is not in the given moves or themes."
+    )
+    user = _puzzle_explain_prompt(
+        req.kid_name, req.themes, req.played_move, req.solution_move, req.reveal
+    )
     try:
         answer = llm.complete(system, user)
         return {"answer": answer}

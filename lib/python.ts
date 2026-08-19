@@ -103,6 +103,20 @@ export async function askViaService(
   });
 }
 
+export interface PuzzleExplainPayload {
+  fen: string;
+  played_move: string;
+  solution_move: string;
+  themes: string[];
+  kid_name: string;
+  reveal: boolean;
+}
+
+/** Explain a wrong move in a tactical puzzle (hint or full reveal). */
+export async function explainPuzzle(payload: PuzzleExplainPayload): Promise<{ answer: string }> {
+  return postJson<{ answer: string }>("/puzzle-explain", payload);
+}
+
 /** Convert a scoresheet photo (bytes) to PGN via the FastAPI service. */
 export async function ocrScoresheet(imageBuffer: Buffer, kidName?: string): Promise<string> {
   const form = new FormData();
