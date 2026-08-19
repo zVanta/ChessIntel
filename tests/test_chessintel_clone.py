@@ -221,6 +221,38 @@ def test_outcome_and_opponent_for_color():
     assert cc._opponent_for_color(report, "black") == "vince"
 
 
+class MateThenWinEngine:
+    """Before calls: forced mate for the side to move; after calls: +7 pawns."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def analyse(self, board, limit):
+        self.calls += 1
+        if self.calls % 2 == 1:
+            return {"score": make_score(0, mate=3)}
+        return {"score": make_score(700)}
+
+
+def test_cp_loss_ignores_mate_to_win():
+    # A forced mate (~10000cp) converted to a still-winning +7.1 is not a loss.
+    assert cc._cp_loss(9997, 710) == 0
+    # Throwing a forced mate away into a losing position IS a blunder.
+    assert cc._cp_loss(9997, -800) == 10797
+    # Normal evals pass through untouched.
+    assert cc._cp_loss(750, 0) == 750
+
+
+def test_analyze_game_does_not_flag_mate_to_win_as_blunder():
+    # Regression for the "Bxd8 won the queen but read as 92.9 pawns lost" bug:
+    # the engine saw a mate before the move and a plain +7 after it.
+    pgn = '[Event "T"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 *'
+    report = cc.analyze_game({"pgn": pgn, "source": "test", "external_id": "1"}, MateThenWinEngine(), depth=1)
+    assert report["blunders"] == []
+    assert report["acpl"] == 0
+    assert report["points_lost"] == 0.0
+
+
 def test_build_report_context_filters_moments_to_kid_color():
     # The exact shape of the vince-vs-ds game: White won 1-0, and the only
     # real blunder (Qe6 -> Nc7+ fork) was BLACK's move. A report for White must

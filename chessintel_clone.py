@@ -69,6 +69,10 @@ BLUNDER_THRESHOLD_CP: int = 250
 # Once the mover is already this far behind, later moves are noise — the game
 # is decided, so don't flag them as fresh blunders.
 DECISIVE_CP: int = 600
+# A forced mate flattens to ±10000 centipawns (mate_score). Comparing that
+# against a normal eval creates a phantom ~90-pawn "loss" (e.g. mate-in-8 →
+# still-winning +7.1 reads as 92.9 pawns). Treat anything ≥ this as a mate.
+MATE_SCORE_CP: int = 9000
 
 LICHESS_GAMES_URL: str = "https://lichess.org/api/games/user/{username}"
 CHESSCOM_ARCHIVES_URL: str = "https://api.chess.com/pub/player/{username}/games/archives"
@@ -147,6 +151,19 @@ def _accuracy_from_loss(loss_pct: float) -> float:
     """Map an advantage loss (win-%) to a 0–100 move accuracy (CAPS-style)."""
     acc = 103.1668 * math.exp(-0.04354 * max(0.0, float(loss_pct))) - 3.1669
     return max(0.0, min(100.0, acc))
+
+
+def _cp_loss(score_before: int, score_after: int) -> int:
+    """Centipawns lost on a move, ignoring the phantom loss from turning a
+    forced mate into a merely winning position.
+
+    ``score_before``/``score_after`` are flattened centipawns where a forced
+    mate reads as ±10000 (``mate_score``). A move that converts mate-in-N into
+    a still-clearly-winning position is NOT a blunder, so its loss reads 0.
+    """
+    if score_before >= MATE_SCORE_CP and score_after >= DECISIVE_CP:
+        return 0
+    return score_before - score_after
 
 
 # ---------------------------------------------------------------------------
@@ -521,6 +538,8 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
         # score_after read as Mate(0), which would otherwise look like a loss.
         if best_uci is not None and move.uci() == best_uci:
             cp_loss = 0
+        else:
+            cp_loss = _cp_loss(score_before, score_after)
         total_moves += 1
         total_cp_lost_all += max(0, cp_loss)
         evals.append([ply, score_after, best_uci])
