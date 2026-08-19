@@ -345,6 +345,21 @@ def test_hanging_squares_detects_en_prise_piece():
     assert "b4" in names
 
 
+def test_hanging_squares_flags_cheaper_attacker_on_queen():
+    # A bishop (3) attacks a queen (9) "defended" by king + knight — capturing
+    # still wins the queen for a bishop, so the queen IS en prise.
+    board = chess.Board("3qk3/8/2n5/6B1/8/8/8/4K3 w - - 0 1")
+    names = [chess.square_name(s) for s in cc._hanging_squares(board)]
+    assert "d8" in names
+
+
+def test_threat_detail_queen_en_prise_beats_non_royal_fork():
+    # After 12...Qd8 the queen is simply lost to the bishop — the description
+    # must say "hanging", not invent a fork.
+    board = chess.Board("3qk3/8/2n5/6B1/8/8/8/4K3 w - - 0 1")
+    assert cc._threat_detail(board) == "left a queen on d8 hanging"
+
+
 def test_opponent_forks_detects_knight_fork():
     # White knight on d5 can play Nc7, forking both black rooks (a8, e8).
     board = chess.Board("r3r1k1/8/8/3N4/8/8/8/7K w - - 0 1")

@@ -176,8 +176,10 @@ _PIECE_VALUES = {"p": 1, "n": 3, "b": 3, "r": 5, "q": 9, "k": 0}
 def _hanging_squares(board: chess.Board) -> List[chess.Square]:
     """Squares where the side that just moved has an en-prise piece.
 
-    A piece is "hanging" when an enemy piece attacks it and it has fewer
-    defenders than attackers (or no defender at all). Kings are excluded.
+    A piece is en prise when an enemy piece attacks it and either it is
+    undefended, outnumbered, or the cheapest attacker is worth less than the
+    piece — so capturing it wins material even after any recapture (e.g. a
+    bishop taking a defended queen). Kings are excluded.
     """
     mover = not board.turn
     hanging: List[chess.Square] = []
@@ -188,7 +190,16 @@ def _hanging_squares(board: chess.Board) -> List[chess.Square]:
         if not attackers:
             continue
         defenders = board.attackers(mover, square)
-        if not defenders or len(defenders) < len(attackers):
+        piece_value = _FORK_TARGET_VALUE.get(piece.piece_type, 0)
+        cheapest_attacker = min(
+            _FORK_TARGET_VALUE.get(board.piece_at(s).piece_type, 0)
+            for s in attackers
+        )
+        if (
+            not defenders
+            or len(defenders) < len(attackers)
+            or cheapest_attacker < piece_value
+        ):
             hanging.append(square)
     return hanging
 
@@ -250,16 +261,31 @@ def _opponent_forks(board: chess.Board) -> List[Dict[str, Any]]:
     return forks
 
 
+def _fork_phrase(f: Dict[str, Any], board: chess.Board) -> str:
+    """Plain-language description of a fork's two most valuable targets."""
+    named = []
+    for square_name in f["squares"][:2]:
+        piece = board.piece_at(chess.parse_square(square_name))
+        pname = chess.piece_name(piece.piece_type) if piece else "piece"
+        named.append(f"the {pname} on {square_name}")
+    return f"the reply {f['san']} attacks {' and '.join(named)}"
+
+
 def _blunder_threat(board_after: chess.Board) -> Optional[str]:
     """Classify the immediate tactical damage of a just-played move.
 
     Returns a short label ("hung a piece", "walked into a fork") or None when
-    the mistake is not one of those two clean motifs.
+    the mistake is not one of those two clean motifs. A royal fork (a check
+    that also attacks a piece) is reported as a fork — that is what the
+    opponent actually played, not a side detail.
     """
     board_after = board_after.copy()
+    forks = _opponent_forks(board_after)
+    if any(f.get("value", 0) >= 100 for f in forks):
+        return "walked into a fork"
     if _hanging_squares(board_after):
         return "hung a piece"
-    if _opponent_forks(board_after):
+    if forks:
         return "walked into a fork"
     return None
 
@@ -268,24 +294,22 @@ def _threat_detail(board_after: chess.Board) -> Optional[str]:
     """Plain-language detail of the tactical damage, computed in code.
 
     Used by the report so the LLM never has to read a raw FEN and hallucinate
-    piece positions.
+    piece positions. A royal fork is reported first (it is what the opponent
+    actually played), then a hung piece, then any other fork.
     """
     board = board_after.copy()
+    forks = _opponent_forks(board)
+    royal = next((f for f in forks if f.get("value", 0) >= 100), None)
+    if royal:
+        return _fork_phrase(royal, board)
     hung = _hanging_squares(board)
     if hung:
         square = hung[0]
         piece = board.piece_at(square)
         name = chess.piece_name(piece.piece_type) if piece else "piece"
         return f"left a {name} on {chess.square_name(square)} hanging"
-    forks = _opponent_forks(board)
     if forks:
-        f = forks[0]
-        named = []
-        for square_name in f["squares"][:2]:
-            piece = board.piece_at(chess.parse_square(square_name))
-            pname = chess.piece_name(piece.piece_type) if piece else "piece"
-            named.append(f"the {pname} on {square_name}")
-        return f"the reply {f['san']} attacks {' and '.join(named)}"
+        return _fork_phrase(forks[0], board)
     return None
 
 
