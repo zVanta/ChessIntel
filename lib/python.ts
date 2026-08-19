@@ -3,6 +3,11 @@ import type { AnalysisResult, KidHistoryEntry } from "./types";
 
 const SERVICE_URL = process.env.PYTHON_SERVICE_URL || "http://127.0.0.1:8000";
 
+// The full pipeline (fetch games → Stockfish → LLM report) can legitimately
+// take several minutes. Node's default fetch headers timeout is only ~5 min,
+// which produced UND_ERR_HEADERS_TIMEOUT on slow analyses.
+const SERVICE_TIMEOUT_MS = 15 * 60 * 1000;
+
 export class PythonServiceError extends Error {
   status: number;
   constructor(message: string, status = 500) {
@@ -13,11 +18,26 @@ export class PythonServiceError extends Error {
 }
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${SERVICE_URL}${path}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${SERVICE_URL}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(SERVICE_TIMEOUT_MS),
+    });
+  } catch (err) {
+    const name = err instanceof Error ? err.name : "";
+    if (name === "TimeoutError" || name === "AbortError") {
+      throw new PythonServiceError(
+        `Python service timed out after ${SERVICE_TIMEOUT_MS / 1000}s on ${path} — the analysis is taking too long`,
+        504
+      );
+    }
+    // Network-level failure (e.g. service down): rethrow so runAnalysis can
+    // fall back to the CLI in development.
+    throw err;
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new PythonServiceError(
