@@ -415,7 +415,7 @@ def test_opponent_forks_picks_royal_fork_not_quiet_moves():
 def test_threat_detail_real_game_royal_fork():
     board = chess.Board(REAL_GAME_AFTER_QE6)
     detail = cc._threat_detail(board)
-    assert detail == "the reply Nc7+ attacks the king on e8 and the queen on e6"
+    assert detail == "allowed a fork: Nc7+ attacks the king on e8 and the queen on e6"
 
 
 # ---------------------------------------------------------------------------

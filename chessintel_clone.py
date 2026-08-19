@@ -262,13 +262,17 @@ def _opponent_forks(board: chess.Board) -> List[Dict[str, Any]]:
 
 
 def _fork_phrase(f: Dict[str, Any], board: chess.Board) -> str:
-    """Plain-language description of a fork's two most valuable targets."""
+    """Plain-language description of a fork's two most valuable targets.
+
+    Phrased as a threat the move allowed, not as the opponent's actual reply —
+    the opponent may have chosen a different (sometimes better) move.
+    """
     named = []
     for square_name in f["squares"][:2]:
         piece = board.piece_at(chess.parse_square(square_name))
         pname = chess.piece_name(piece.piece_type) if piece else "piece"
         named.append(f"the {pname} on {square_name}")
-    return f"the reply {f['san']} attacks {' and '.join(named)}"
+    return f"allowed a fork: {f['san']} attacks {' and '.join(named)}"
 
 
 def _blunder_threat(board_after: chess.Board) -> Optional[str]:
@@ -976,6 +980,10 @@ _REPORT_SYSTEM = (
     "the engine's line, the position FEN, the cost in pawns, the opponent).\n"
     "- Copy move notation EXACTLY as given (+ / # / x / O-O / O-O-O). Never "
     "guess, add, or change it.\n"
+    "- Each Moment uses four bold labels: **Why it looked good**, **Why it "
+    "failed**, **Concept**, **Pattern**. Fill them from the facts — 'Why it "
+    "failed' must quote the 'tactical issue' fact and never invent a square, "
+    "piece, or capture.\n"
     "- NEVER describe the board or invent pieces, squares, or material. You have "
     "no board view — only the facts given (the played move, the engine's preferred "
     "move and line, the cost, and the 'what happened' note). Explain using exactly "
@@ -1093,7 +1101,7 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
             if m.get("best"):
                 parts.append(f"engine preferred {m['best']}")
             if m.get("threat_detail"):
-                parts.append(f"what happened: {m['threat_detail']}")
+                parts.append(f"tactical issue: {m['threat_detail']}")
             elif m.get("threat"):
                 parts.append(f"mistake type: {m['threat']}")
             candidates = m.get("candidates") or []
@@ -1156,18 +1164,21 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
             "",
             "### Moment 1 — {moment1}",
             "",
-            "(Analyze this exact position like a coach: what was on the board, why "
-            "the played move hurt, why the engine's move was better in concrete "
-            "chess terms, and what to do differently next time. Phrase the takeaway "
-            "naturally — don't reuse a fixed 'Fix:' formula.)",
+            "**Why it looked good:** <one sentence — what the player was probably trying>",
+            "**Why it failed:** <the concrete problem, quoting the 'tactical issue' fact — "
+            "never add a square or piece that is not in it>",
+            "**Concept:** <one short phrase, e.g. the habit name>",
+            "**Pattern:** <one sentence on what to recognise in similar positions>",
             "",
         ]
         if second_moment:
             pattern_section += [
                 "### Moment 2 — {moment2}",
                 "",
-                "(Analyze a different moment from the facts, written differently from "
-                "Moment 1.)",
+                "**Why it looked good:** <...>",
+                "**Why it failed:** <...>",
+                "**Concept:** <...>",
+                "**Pattern:** <...>",
                 "",
             ]
     else:
