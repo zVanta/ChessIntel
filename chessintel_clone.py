@@ -447,6 +447,8 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
         "blunders": [],
         "phase_blunders": {"opening": 0, "middlegame": 0, "endgame": 0},
         "points_lost": 0.0,
+        "points_lost_white": 0.0,
+        "points_lost_black": 0.0,
         "moves": 0,
         "acpl": 0,
         "evals": [],
@@ -464,6 +466,8 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
     board = chess.Board()
     blunders: List[Dict[str, Any]] = []
     total_cp_lost = 0
+    total_cp_white = 0
+    total_cp_black = 0
     total_cp_lost_all = 0
     total_moves = 0
     evals: List[List[Any]] = []
@@ -534,6 +538,7 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
             # checkmate (#) annotation, so never append another one.
             blunders.append({
                 "ply": ply,
+                "color": "white" if mover == chess.WHITE else "black",
                 "san": san,
                 "best": best_san,
                 "phase": phase,
@@ -546,6 +551,10 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
                 "threat_detail": _threat_detail(board),
             })
             total_cp_lost += cp_loss
+            if mover == chess.WHITE:
+                total_cp_white += cp_loss
+            else:
+                total_cp_black += cp_loss
 
     phase_blunders = {"opening": 0, "middlegame": 0, "endgame": 0}
     for b in blunders:
@@ -563,6 +572,8 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
         "blunders": blunders,
         "phase_blunders": phase_blunders,
         "points_lost": round(total_cp_lost / 100.0, 2),
+        "points_lost_white": round(total_cp_white / 100.0, 2),
+        "points_lost_black": round(total_cp_black / 100.0, 2),
         "moves": total_moves,
         "acpl": round(total_cp_lost_all / max(1, total_moves)),
         "evals": evals,
@@ -747,6 +758,33 @@ def _opponent_for(report: Dict[str, Any], username: str) -> str:
     return black or white or "Opponent"
 
 
+def _outcome_for_color(report: Dict[str, Any], kid_color: Optional[str]) -> str:
+    """Outcome ('win'/'loss'/'draw'/'unknown') when the kid's side is known."""
+    result = (report.get("result") or "").strip()
+    if result == "1/2-1/2":
+        return "draw"
+    if kid_color == "white":
+        if result == "1-0":
+            return "win"
+        if result == "0-1":
+            return "loss"
+    elif kid_color == "black":
+        if result == "0-1":
+            return "win"
+        if result == "1-0":
+            return "loss"
+    return "unknown"
+
+
+def _opponent_for_color(report: Dict[str, Any], kid_color: Optional[str]) -> str:
+    """The opponent's name when the kid's side is known, else a best guess."""
+    if kid_color == "white":
+        return (report.get("black") or "").strip() or "Opponent"
+    if kid_color == "black":
+        return (report.get("white") or "").strip() or "Opponent"
+    return (report.get("black") or report.get("white") or "Opponent").strip() or "Opponent"
+
+
 def _date_range(dates: List[datetime]) -> str:
     if not dates:
         return "recent games"
@@ -765,22 +803,36 @@ def build_report_context(reports: List[Dict[str, Any]], platform: str,
                          notes: Optional[str] = None,
                          answers: Optional[List[str]] = None,
                          rating: Optional[int] = None,
-                         history: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+                         history: Optional[List[Dict[str, Any]]] = None,
+                         kid_color: Optional[str] = None) -> Dict[str, Any]:
     """Summarise analysed games into a compact, LLM-ready context dict."""
+    # Which side of the board the kid plays. An explicit ``kid_color`` (from a
+    # colour selector on the scoresheet/PGN form) wins; otherwise match the
+    # platform username against the game's player names.
+    uname = (username or "").strip().lower()
+    if kid_color is None and uname:
+        for r in reports:
+            if (r.get("white") or "").strip().lower() == uname:
+                kid_color = "white"
+                break
+            if (r.get("black") or "").strip().lower() == uname:
+                kid_color = "black"
+                break
+
     wins = losses = draws = 0
     games_brief: List[Dict[str, str]] = []
     moments: List[Dict[str, Any]] = []
     dates: List[datetime] = []
 
     for r in reports:
-        outcome = _outcome_for(r, username)
+        outcome = _outcome_for_color(r, kid_color) if kid_color else _outcome_for(r, username)
         if outcome == "win":
             wins += 1
         elif outcome == "loss":
             losses += 1
         elif outcome == "draw":
             draws += 1
-        opponent = _opponent_for(r, username)
+        opponent = _opponent_for_color(r, kid_color) if kid_color else _opponent_for(r, username)
         games_brief.append({
             "opponent": opponent,
             "outcome": outcome,
@@ -790,11 +842,18 @@ def build_report_context(reports: List[Dict[str, Any]], platform: str,
             "acpl": r.get("acpl") or 0,
             "accuracy": r.get("accuracy") or 0,
         })
-        for b in sorted(r.get("blunders") or [], key=lambda b: -(b.get("cp_loss") or 0))[:2]:
+        # Only the kid's own mistakes belong in a kid's report. When the kid's
+        # side is unknown, keep all blunders and label each one's colour below.
+        kid_blunders = [
+            b for b in (r.get("blunders") or [])
+            if (not kid_color) or (b.get("color") == kid_color)
+        ]
+        for b in sorted(kid_blunders, key=lambda b: -(b.get("cp_loss") or 0))[:2]:
             moments.append({
                 "san": b.get("san") or "?",
                 "best": b.get("best"),
                 "ply": b.get("ply"),
+                "color": b.get("color"),
                 "phase": b.get("phase") or "middlegame",
                 "cp_loss": round((b.get("cp_loss") or 0) / 100.0, 1),
                 "opponent": opponent,
@@ -814,18 +873,6 @@ def build_report_context(reports: List[Dict[str, Any]], platform: str,
     acc_values = [g["accuracy"] for g in games_brief if g.get("accuracy")]
     avg_accuracy = round(sum(acc_values) / len(acc_values)) if acc_values else 0
     openings = sorted({g["opening"] for g in games_brief if g.get("opening")})
-
-    # Which side of the board the kid plays (when the platform username tells us).
-    uname = (username or "").strip().lower()
-    kid_color: Optional[str] = None
-    if uname:
-        for r in reports:
-            if (r.get("white") or "").strip().lower() == uname:
-                kid_color = "white"
-                break
-            if (r.get("black") or "").strip().lower() == uname:
-                kid_color = "black"
-                break
 
     # Accuracy and move-quality, split by colour. A kid's report must never
     # claim the opponent's good moves as their own.
@@ -990,8 +1037,16 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
     moments = ctx.get("moments") or []
     if moments:
         facts.append("Key mistake moments (engine line included):")
+        if not kid_color:
+            facts.append(
+                "NOTE: the player's side of the board is unknown, so every "
+                "moment below is labelled with the side that played it — do "
+                "not attribute a move to the player without its colour."
+            )
         for m in moments:
             parts = [f"- {m['san']} at ply {m['ply']} ({m['phase']}, lost ~{m['cp_loss']} pawns)"]
+            if not kid_color and m.get("color"):
+                parts[0] += f" (played by {'White' if m['color'] == 'white' else 'Black'})"
             if m.get("best"):
                 parts.append(f"engine preferred {m['best']}")
             if m.get("threat_detail"):
@@ -1533,11 +1588,17 @@ def run_analysis(platform: str, username: str, kid_name: str = "Player",
 
     habits = aggregate_habits(reports)
     top_habit = habits[0]["habit"] if habits else "Piece safety"
-    points_lost = round(sum(r.get("points_lost", 0.0) for r in reports), 2)
     context = build_report_context(
         reports, platform, username, top_habit, notes=notes, answers=answers,
         rating=rating, history=history,
     )
+    kid_color = context.get("kid_color")
+    if kid_color == "white":
+        points_lost = round(sum(r.get("points_lost_white", 0.0) for r in reports), 2)
+    elif kid_color == "black":
+        points_lost = round(sum(r.get("points_lost_black", 0.0) for r in reports), 2)
+    else:
+        points_lost = round(sum(r.get("points_lost", 0.0) for r in reports), 2)
     markdown = generate_report(kid_name, top_habit, len(reports), context=context)
 
     result: Dict[str, Any] = {

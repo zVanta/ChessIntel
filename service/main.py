@@ -50,6 +50,8 @@ class AnalyzePgnRequest(BaseModel):
     kid_name: str = "Player"
     notes: Optional[str] = None
     answers: Optional[List[str]] = None
+    side: Optional[str] = None  # "white" | "black" | None (auto-detect)
+    usernames: Optional[List[str]] = None  # kid's platform usernames for auto-detect
 
 
 class AskRequest(BaseModel):
@@ -79,6 +81,24 @@ def analyze(req: AnalyzeRequest) -> Dict[str, Any]:
     )
 
 
+def _resolve_kid_color(report: Dict[str, Any], side: Optional[str],
+                       usernames: Optional[List[str]]) -> Optional[str]:
+    """Which side the kid played, from an explicit choice or a username match."""
+    if side in ("white", "black"):
+        return side
+    white = (report.get("white") or "").strip().lower()
+    black = (report.get("black") or "").strip().lower()
+    for u in (usernames or []):
+        u = (u or "").strip().lower()
+        if not u:
+            continue
+        if u == white:
+            return "white"
+        if u == black:
+            return "black"
+    return None
+
+
 @app.post("/analyze-pgn")
 def analyze_pgn(req: AnalyzePgnRequest) -> Dict[str, Any]:
     """Analyze a single PGN (used after scoresheet OCR / paste) and build a report."""
@@ -97,9 +117,16 @@ def analyze_pgn(req: AnalyzePgnRequest) -> Dict[str, Any]:
 
     habits = chessintel_clone.aggregate_habits([report])
     top_habit = habits[0]["habit"] if habits else "Piece safety"
-    points_lost = round(report.get("points_lost", 0.0), 2)
+    kid_color = _resolve_kid_color(report, req.side, req.usernames)
+    if kid_color == "white":
+        points_lost = round(report.get("points_lost_white", 0.0), 2)
+    elif kid_color == "black":
+        points_lost = round(report.get("points_lost_black", 0.0), 2)
+    else:
+        points_lost = round(report.get("points_lost", 0.0), 2)
     context = chessintel_clone.build_report_context(
-        [report], "scoresheet", "", top_habit, notes=req.notes, answers=req.answers
+        [report], "scoresheet", "", top_habit, notes=req.notes, answers=req.answers,
+        kid_color=kid_color,
     )
     markdown = chessintel_clone.generate_report(
         req.kid_name, top_habit, 1, context=context

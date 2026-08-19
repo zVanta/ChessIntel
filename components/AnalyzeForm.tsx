@@ -41,6 +41,7 @@ export default function AnalyzeForm() {
   const [maxGames, setMaxGames] = useState(5);
   const [pgnText, setPgnText] = useState("");
   const [question, setQuestion] = useState("");
+  const [side, setSide] = useState<"auto" | "white" | "black">("auto");
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,6 +104,7 @@ export default function AnalyzeForm() {
       form.append("kidId", String(kidId));
       form.append("notes", notes);
       form.append("answers", JSON.stringify(cleanAnswers));
+      if (side !== "auto") form.append("side", side);
       const res = await fetch("/api/upload-scoresheet", { method: "POST", body: form });
       const data = await res.json();
       if (!res.ok) {
@@ -176,7 +178,13 @@ export default function AnalyzeForm() {
       const res = await fetch("/api/analyze-pgn", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ kidId, pgn: pgnText, notes, answers: cleanAnswers }),
+        body: JSON.stringify({
+          kidId,
+          pgn: pgnText,
+          notes,
+          answers: cleanAnswers,
+          side: side === "auto" ? undefined : side,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -414,6 +422,28 @@ export default function AnalyzeForm() {
                 {answer}
               </div>
             )}
+          </div>
+        )}
+
+        {(mode === "scoresheet" || mode === "pgn") && (
+          <div className="mt-4">
+            <label className="block text-sm font-medium text-slate-700">
+              Which side did {selectedKid?.name ?? "your kid"} play?
+            </label>
+            <div className="mt-1 flex flex-wrap gap-4">
+              {(["auto", "white", "black"] as const).map((s) => (
+                <label key={s} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="kid-side"
+                    checked={side === s}
+                    onChange={() => setSide(s)}
+                    className="accent-emerald-600"
+                  />
+                  {s === "auto" ? "Guess from username" : s === "white" ? "White" : "Black"}
+                </label>
+              ))}
+            </div>
           </div>
         )}
 

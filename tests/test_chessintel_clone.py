@@ -201,6 +201,70 @@ def test_analyze_game_splits_class_counts_by_color():
     assert total == report["moves"]
 
 
+def test_analyze_game_records_blunder_color_and_per_color_points():
+    # FakeEngine makes White blunder every move and Black stay flat, so every
+    # detected blunder belongs to White.
+    pgn = '[Event "T"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 *'
+    report = cc.analyze_game({"pgn": pgn, "source": "test", "external_id": "1"}, FakeEngine(), depth=1)
+    assert report["blunders"], "expected white blunders from the fake engine"
+    assert all(b["color"] == "white" for b in report["blunders"])
+    assert report["points_lost_white"] > 0
+    assert report["points_lost_black"] == 0
+
+
+def test_outcome_and_opponent_for_color():
+    report = {"white": "vince", "black": "ds", "result": "1-0"}
+    assert cc._outcome_for_color(report, "white") == "win"
+    assert cc._outcome_for_color(report, "black") == "loss"
+    assert cc._outcome_for_color(report, None) == "unknown"
+    assert cc._opponent_for_color(report, "white") == "ds"
+    assert cc._opponent_for_color(report, "black") == "vince"
+
+
+def test_build_report_context_filters_moments_to_kid_color():
+    # The exact shape of the vince-vs-ds game: White won 1-0, and the only
+    # real blunder (Qe6 -> Nc7+ fork) was BLACK's move. A report for White must
+    # NOT blame White for Black's Qe6.
+    report = {
+        "source": "scoresheet",
+        "external_id": "",
+        "white": "vince",
+        "black": "ds",
+        "result": "1-0",
+        "opening": None,
+        "played_at": None,
+        "acpl": 40,
+        "accuracy": 80,
+        "accuracy_white": 89,
+        "accuracy_black": 81,
+        "points_lost": 4.0,
+        "points_lost_white": 0.5,
+        "points_lost_black": 3.5,
+        "class_counts": {"blunder": 1, "okay": 1},
+        "class_counts_white": {"okay": 1},
+        "class_counts_black": {"blunder": 1},
+        "habit_tags": ["Fork awareness"],
+        "blunders": [
+            {"ply": 32, "color": "black", "san": "Qe6", "best": "Qb8", "phase": "middlegame",
+             "cp_loss": 360, "loss_pct": 10.0, "class": "blunder", "fen": None,
+             "line": "Qb8 Qd3", "threat": "walked into a fork",
+             "threat_detail": "the reply Nc7+ attacks the king on e8 and the queen on e6",
+             "candidates": []},
+            {"ply": 5, "color": "white", "san": "Qxd4", "best": "Nf3", "phase": "opening",
+             "cp_loss": 40, "loss_pct": 2.0, "class": "okay", "fen": None,
+             "line": "Nf3", "threat": None, "threat_detail": None, "candidates": []},
+        ],
+    }
+    ctx = cc.build_report_context([report], "scoresheet", "", "Fork awareness", kid_color="white")
+    assert ctx["kid_color"] == "white"
+    assert [m["san"] for m in ctx["moments"]] == ["Qxd4"]
+    assert ctx["wins"] == 1 and ctx["losses"] == 0
+
+    ctx_black = cc.build_report_context([report], "scoresheet", "", "Fork awareness", kid_color="black")
+    assert [m["san"] for m in ctx_black["moments"]] == ["Qe6"]
+    assert ctx_black["losses"] == 1 and ctx_black["wins"] == 0
+
+
 # ---------------------------------------------------------------------------
 # generate_report fallback (no API key)
 # ---------------------------------------------------------------------------

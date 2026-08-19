@@ -35,6 +35,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Paste a PGN first." }, { status: 400 });
   }
 
+  const sideRaw = input.side;
+  const side = sideRaw === "white" || sideRaw === "black" ? sideRaw : undefined;
+  const usernames = [kid.lichess_username, kid.chesscom_username].filter(
+    (u): u is string => typeof u === "string" && u.trim().length > 0
+  );
+
   if (!consumeCredit(user.id)) {
     return NextResponse.json(
       { error: "No credits left. Fund credits on your Profile page." },
@@ -51,7 +57,7 @@ export async function POST(req: Request) {
   const job = createJob();
   void (async () => {
     try {
-      const result = await analyzePgnViaService(pgn, kid.name, notes, answers);
+      const result = await analyzePgnViaService(pgn, kid.name, notes, answers, { side, usernames });
       const persisted = persistAnalysis(kidId, result);
       completeJob(job.id, {
         report: persisted.report,

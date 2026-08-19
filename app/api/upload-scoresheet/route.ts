@@ -46,6 +46,11 @@ export async function POST(req: Request) {
   const notesRaw = form.get("notes");
   const notes =
     typeof notesRaw === "string" && notesRaw.trim() ? notesRaw.trim() : undefined;
+  const sideRaw = form.get("side");
+  const side = sideRaw === "white" || sideRaw === "black" ? sideRaw : undefined;
+  const usernames = [kid.lichess_username, kid.chesscom_username].filter(
+    (u): u is string => typeof u === "string" && u.trim().length > 0
+  );
   let answers: string[] | undefined;
   const answersRaw = form.get("answers");
   if (typeof answersRaw === "string" && answersRaw.trim()) {
@@ -66,7 +71,7 @@ export async function POST(req: Request) {
       if (!pgn || !pgn.trim()) {
         throw new Error("No moves could be read from the scoresheet.");
       }
-      const result = await analyzePgnViaService(pgn, kid.name, notes, answers);
+      const result = await analyzePgnViaService(pgn, kid.name, notes, answers, { side, usernames });
       const persisted = persistAnalysis(kidId, result);
       completeJob(job.id, {
         report: persisted.report,

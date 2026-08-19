@@ -65,18 +65,28 @@ export async function analyzeViaService(payload: AnalyzeRequestPayload): Promise
   return postJson<AnalysisResult>("/analyze", payload);
 }
 
+export interface AnalyzePgnOptions {
+  /** Which side the kid played — omit to auto-detect from usernames. */
+  side?: "white" | "black";
+  /** The kid's platform usernames, used to auto-detect their side. */
+  usernames?: string[];
+}
+
 /** Analyze a single PGN (scoresheet / paste path) via the FastAPI service. */
 export async function analyzePgnViaService(
   pgn: string,
   kidName: string,
   notes?: string,
-  answers?: string[]
+  answers?: string[],
+  options: AnalyzePgnOptions = {}
 ): Promise<AnalysisResult> {
   return postJson<AnalysisResult>("/analyze-pgn", {
     pgn,
     kid_name: kidName,
     notes,
     answers,
+    side: options.side,
+    usernames: options.usernames ?? [],
   });
 }
 
