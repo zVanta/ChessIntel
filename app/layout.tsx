@@ -67,6 +67,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <Link href="/progress" className="hover:text-slate-900">
                     Progress
                   </Link>
+                  <Link href="/train" className="hover:text-slate-900">
+                    Train
+                  </Link>
                   <Link href="/profile" className="hover:text-slate-900">
                     Profile
                   </Link>

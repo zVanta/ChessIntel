@@ -1,4 +1,4 @@
-import { createDrillFollowup, createGame, createReport, gameExistsForKid, getLatestReportForKid } from "./db";
+import { createDrillFollowup, createGame, createMistakeCards, createReport, gameExistsForKid, getLatestReportForKid } from "./db";
 import type { AnalysisResult, DrillFollowup, GameRow, Report } from "./types";
 
 export interface PersistedAnalysis {
@@ -35,6 +35,28 @@ export function persistAnalysis(kidId: number, result: AnalysisResult): Persiste
     .map((g) =>
       createGame(report.id, g.source || "unknown", g.external_id || null, g.pgn || "")
     );
+
+  // Turn the kid's own blunders into reusable training cards (Woodpecker).
+  const kidColor = result.kid_color;
+  const cards = (result.games || []).flatMap((g) =>
+    (g.blunders || [])
+      .filter((b) => !kidColor || b.color === kidColor)
+      .filter((b) => b.fen)
+      .map((b) => ({
+        fen: b.fen as string,
+        san: b.san || "?",
+        best: b.best || null,
+        color: b.color || "white",
+        cp_loss: b.cp_loss || 0,
+        concept: b.threat === "walked into a fork" ? "Fork awareness"
+          : b.threat === "hung a piece" ? "Hung pieces"
+          : result.habit,
+        threat_detail: b.threat_detail || null,
+      }))
+  );
+  if (cards.length) {
+    createMistakeCards(kidId, report.id, cards);
+  }
 
   let followup: DrillFollowup | null = null;
   if (prior && prior.recurring_habit === result.habit) {

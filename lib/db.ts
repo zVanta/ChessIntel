@@ -10,6 +10,7 @@ import type {
   Kid,
   KidHistoryEntry,
   KidWithMeta,
+  MistakeCard,
   ProgressRow,
   Report,
   User,
@@ -88,6 +89,25 @@ function migrate(db: Database.Database): void {
       checked_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS mistake_cards (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kid_id INTEGER NOT NULL REFERENCES kids(id) ON DELETE CASCADE,
+      report_id INTEGER NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+      fen TEXT NOT NULL,
+      san TEXT NOT NULL,
+      best TEXT,
+      color TEXT NOT NULL,
+      cp_loss REAL NOT NULL,
+      concept TEXT NOT NULL,
+      threat_detail TEXT,
+      repetitions INTEGER NOT NULL DEFAULT 0,
+      interval_days INTEGER NOT NULL DEFAULT 1,
+      lapses INTEGER NOT NULL DEFAULT 0,
+      due_at INTEGER NOT NULL,
+      last_review_at INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS funding_events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       stripe_invoice_id TEXT NOT NULL UNIQUE,
@@ -99,6 +119,7 @@ function migrate(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_reports_kid ON reports(kid_id);
     CREATE INDEX IF NOT EXISTS idx_games_report ON games(report_id);
     CREATE INDEX IF NOT EXISTS idx_followups_kid ON drill_followups(kid_id);
+    CREATE INDEX IF NOT EXISTS idx_cards_kid ON mistake_cards(kid_id);
   `);
 
   // Idempotent column additions for older databases. Must run BEFORE creating
@@ -510,6 +531,64 @@ export function getProgressForKid(kidId: number): ProgressRow[] {
     report,
     followups: followups.filter((f) => f.later_report_id === report.id || f.report_id === report.id),
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Mistake cards + spaced repetition (Woodpecker-style)
+// ---------------------------------------------------------------------------
+
+const DAY_MS = 86_400_000;
+
+export interface NewMistakeCard {
+  fen: string;
+  san: string;
+  best: string | null;
+  color: string;
+  cp_loss: number;
+  concept: string;
+  threat_detail: string | null;
+}
+
+export function createMistakeCards(kidId: number, reportId: number, cards: NewMistakeCard[]): void {
+  const insert = getDb().prepare(
+    `INSERT INTO mistake_cards (kid_id, report_id, fen, san, best, color, cp_loss, concept, threat_detail, due_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  const dueAt = Date.now();
+  for (const c of cards) {
+    insert.run(kidId, reportId, c.fen, c.san, c.best, c.color, c.cp_loss, c.concept, c.threat_detail, dueAt);
+  }
+}
+
+export function getDueMistakeCards(kidId: number, limit = 20): MistakeCard[] {
+  return getDb()
+    .prepare(`SELECT * FROM mistake_cards WHERE kid_id = ? AND due_at <= ? ORDER BY due_at ASC, id ASC LIMIT ?`)
+    .all(kidId, Date.now(), limit) as MistakeCard[];
+}
+
+export function getMistakeCardsForKid(kidId: number): MistakeCard[] {
+  return getDb()
+    .prepare(`SELECT * FROM mistake_cards WHERE kid_id = ? ORDER BY due_at ASC, id ASC`)
+    .all(kidId) as MistakeCard[];
+}
+
+export function reviewMistakeCard(cardId: number, correct: boolean): MistakeCard | undefined {
+  const card = getDb().prepare(`SELECT * FROM mistake_cards WHERE id = ?`).get(cardId) as MistakeCard | undefined;
+  if (!card) return undefined;
+
+  const repetitions = correct ? card.repetitions + 1 : 0;
+  const lapses = correct ? card.lapses : card.lapses + 1;
+  // Exponential backoff: 1, 2, 4, 8, 16, 32 days; a lapse resets to 1.
+  const intervalDays = correct ? Math.min(2 ** (repetitions - 1), 32) : 1;
+  const dueAt = Date.now() + intervalDays * DAY_MS;
+
+  getDb()
+    .prepare(
+      `UPDATE mistake_cards SET repetitions = ?, interval_days = ?, lapses = ?, due_at = ?, last_review_at = ? WHERE id = ?`
+    )
+    .run(repetitions, intervalDays, lapses, dueAt, Date.now(), cardId);
+
+  return getDb().prepare(`SELECT * FROM mistake_cards WHERE id = ?`).get(cardId) as MistakeCard;
 }
 
 // ---------------------------------------------------------------------------

@@ -85,7 +85,19 @@ export interface AnalysisGame {
   black?: string | null;
   result?: string | null;
   played_at?: number | null;
-  blunders: { ply: number; san?: string; phase: string; cp_loss: number }[];
+  blunders: {
+    ply: number;
+    color?: "white" | "black";
+    san?: string;
+    best?: string | null;
+    phase: string;
+    cp_loss: number;
+    fen?: string | null;
+    threat?: string | null;
+    threat_detail?: string | null;
+    seconds?: number | null;
+    after_capture?: boolean;
+  }[];
   phase_blunders: Record<string, number>;
   points_lost: number;
   habit_tags: string[];
@@ -95,6 +107,7 @@ export interface AnalysisResult {
   kid_name: string;
   platform: string;
   username: string;
+  kid_color?: "white" | "black";
   game_count: number;
   habit: string;
   summary_text: string;
@@ -102,4 +115,23 @@ export interface AnalysisResult {
   drill: string;
   points_lost: number;
   games: AnalysisGame[];
+}
+
+export interface MistakeCard {
+  id: number;
+  kid_id: number;
+  report_id: number;
+  fen: string;
+  san: string;
+  best: string | null;
+  color: "white" | "black";
+  cp_loss: number;
+  concept: string;
+  threat_detail: string | null;
+  repetitions: number;
+  interval_days: number;
+  lapses: number;
+  due_at: number;
+  last_review_at: number | null;
+  created_at: string;
 }

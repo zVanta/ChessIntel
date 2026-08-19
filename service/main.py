@@ -136,6 +136,7 @@ def analyze_pgn(req: AnalyzePgnRequest) -> Dict[str, Any]:
         "kid_name": req.kid_name,
         "platform": "scoresheet",
         "username": "",
+        "kid_color": kid_color,
         "game_count": 1,
         "habit": top_habit,
         "summary_text": chessintel_clone._short_version(markdown),
