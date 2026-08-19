@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import LogoutButton from "@/components/LogoutButton";
+import MobileNav from "@/components/MobileNav";
 import { getSessionUser, isAdmin } from "@/lib/auth";
 import "./globals.css";
 import "@lichess-org/chessground/assets/chessground.base.css";
@@ -33,6 +34,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const user = getSessionUser();
+  const isAdminUser = user ? isAdmin(user) : false;
 
   return (
     <html lang="en">
@@ -45,12 +47,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="min-h-screen">
-        <header className="border-b border-slate-200 bg-white">
+        <header className="relative border-b border-slate-200 bg-white">
           <nav className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
             <Link href={user ? "/dashboard" : "/"} className="text-lg font-bold text-slate-900">
               {SITE_NAME}
             </Link>
-            <div className="flex items-center gap-4 text-sm font-medium text-slate-600">
+            <div className="hidden items-center gap-4 text-sm font-medium text-slate-600 sm:flex">
               {user ? (
                 <>
                   <Link href="/analyze" className="hover:text-slate-900">
@@ -87,6 +89,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 </Link>
               )}
             </div>
+            <MobileNav
+              loggedIn={Boolean(user)}
+              isAdmin={isAdminUser}
+              credits={user?.credits ?? 0}
+              siteName={SITE_NAME}
+            />
           </nav>
         </header>
         <main className="mx-auto max-w-4xl px-4 py-8">{children}</main>

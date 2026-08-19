@@ -12,7 +12,7 @@ export default function LandingPage() {
           We pull your junior player&apos;s recent games, run them through a chess engine,
           and explain — in plain English — the one habit worth fixing next.
         </p>
-        <div className="mt-6 flex justify-center gap-3">
+        <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
           <Link
             href="/onboard"
             className="rounded-lg bg-emerald-600 px-6 py-3 text-sm font-semibold text-white hover:bg-emerald-700"
