@@ -68,3 +68,32 @@ def test_scoresheet_to_pgn_returns_valid_pgn(monkeypatch):
         moves.append(board.san(move))
         board.push(move)
     assert moves == ["e4", "e5"]
+
+
+# ---------------------------------------------------------------------------
+# handwriting repair (legal-move constrained)
+# ---------------------------------------------------------------------------
+
+def test_repair_move_recovers_digit_lookalike():
+    board = chess.Board()
+    for san in ("e4", "e5", "Nf3", "Nc6"):
+        board.push_san(san)
+    # "8b5" is a misread of Bb5 (B read as 8).
+    assert so._repair_move(board, "8b5") == "Bb5"
+
+
+def test_repair_move_leaves_file_slips_alone():
+    board = chess.Board()
+    for san in ("e4", "e5", "Nf3"):
+        board.push_san(san)
+    # "Kd7" differs from the legal "Ke7" only in the file letter — never guess.
+    assert so._repair_move(board, "Kd7") is None
+
+
+def test_replay_validate_repairs_handwriting_slip():
+    turns = [("e4", "e5"), ("Nf3", "Nc6"), ("8b5", "a6")]
+    pgn, illegal = so._replay_validate(turns)
+    assert illegal == []
+    assert "Bb5" in pgn
+    game = chess.pgn.read_game(io.StringIO(pgn))
+    assert game is not None

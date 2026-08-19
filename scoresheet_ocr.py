@@ -29,7 +29,40 @@ try:
 except ImportError:  # pragma: no cover - exercised only without tesseract
     pytesseract = None  # type: ignore[assignment]
 
-_TESSERACT_CONFIG = "-c tessedit_char_whitelist=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+-=xO# --psm 6"
+_TESSERACT_CONFIG = "-c tessedit_char_whitelist=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+-=xO# --psm 7"
+
+
+def _deskew(img: Any) -> Any:
+    """Straighten a rotated scoresheet by its printed grid lines."""
+    import cv2
+    import numpy as np
+
+    edges = cv2.Canny(img, 50, 150, apertureSize=3)
+    lines = cv2.HoughLinesP(
+        edges, 1, np.pi / 180.0, threshold=80,
+        minLineLength=int(img.shape[0] * 0.25), maxLineGap=20,
+    )
+    if lines is None or len(lines) == 0:
+        return img
+
+    angles = []
+    for line in lines:
+        x1, y1, x2, y2 = line[0]
+        angle = float(np.degrees(np.arctan2(float(y2 - y1), float(x2 - x1))))
+        # Keep only near-horizontal lines (the table rows).
+        if -45.0 < angle < 45.0:
+            angles.append(angle)
+    if not angles:
+        return img
+
+    skew = float(np.median(angles))
+    if abs(skew) < 0.3:
+        return img
+
+    h, w = img.shape[:2]
+    matrix = cv2.getRotationMatrix2D((w // 2, h // 2), skew, 1.0)
+    return cv2.warpAffine(img, matrix, (w, h), flags=cv2.INTER_LINEAR,
+                          borderMode=cv2.BORDER_REPLICATE)
 
 
 # ---------------------------------------------------------------------------
@@ -51,6 +84,7 @@ def _preprocess(image: Any) -> Any:
         img = cv2.imdecode(buf, cv2.IMREAD_GRAYSCALE)
     if img is None:
         raise ValueError("Could not read scoresheet image")
+    img = _deskew(img)
     img = cv2.GaussianBlur(img, (3, 3), 0)
     return cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                  cv2.THRESH_BINARY_INV, 11, 2)
@@ -94,8 +128,14 @@ def _cluster(cells: Sequence[Tuple[int, int, int, int]]) -> List[List[Tuple[int,
 
 
 def _crop_cell(img: Any, box: Tuple[int, int, int, int]) -> Any:
+    import cv2
+
     x, y, w, h = box
-    return img[y:y + h, x:x + w]
+    cell = img[y:y + h, x:x + w]
+    # Upscale small cells; Tesseract reads best near ~300 DPI.
+    if cell.shape[0] > 0 and cell.shape[1] > 0 and max(cell.shape[:2]) < 120:
+        return cv2.resize(cell, None, fx=3.0, fy=3.0, interpolation=cv2.INTER_CUBIC)
+    return cell
 
 
 # ---------------------------------------------------------------------------
@@ -126,12 +166,64 @@ def _build_pgn(legal_sans: Sequence[str]) -> str:
     return '[Event "Scoresheet"]\n[White "?"]\n[Black "?"]\n[Result "*"]\n\n' + body
 
 
+# Handwriting OCR commonly confuses these characters. Mapping them to a single
+# canonical form lets us recover single-symbol slips (e.g. "0-0" for "O-O",
+# "8b5" for "Bb5", "NfS" for "Nf5") without guessing between file letters.
+_CONFUSION_CANON = str.maketrans({
+    "O": "0", "o": "0",
+    "l": "1", "I": "1",
+    "S": "5",
+    "B": "8",
+    "Z": "2",
+})
+
+
+def _canon(san: str) -> str:
+    return san.translate(_CONFUSION_CANON)
+
+
+def _repair_move(board: Any, token: str) -> Optional[str]:
+    """Return the legal SAN matching ``token`` under canonicalisation, if unique.
+
+    Only repairs handwriting look-alikes (digits vs. letters), never file
+    letters, so a token like "Kd7" is left untouched rather than guessed into
+    "Ke7". Returns None when no legal move matches or the match is ambiguous.
+    """
+    if not token:
+        return None
+    target = _canon(token)
+    sans = [board.san(m) for m in board.legal_moves]
+    matches = [san for san in sans if _canon(san) == target]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _push_or_repair(board: Any, token: str) -> Optional[str]:
+    """Push ``token`` as SAN, repairing single-symbol handwriting slips.
+
+    Returns the SAN actually played (the token or a repaired legal move), or
+    None when the move is illegal and not recoverable.
+    """
+    try:
+        board.push_san(token)
+        return token
+    except Exception:
+        repaired = _repair_move(board, token)
+        if repaired is None:
+            return None
+        try:
+            board.push_san(repaired)
+            return repaired
+        except Exception:
+            return None
+
+
 def _replay_validate(turns: Sequence[Sequence[str]]) -> Tuple[str, List[int]]:
     """Replay turns with python-chess and flag illegal move numbers.
 
     ``turns`` is a sequence of (white_san, black_san) pairs. Returns
     ``(pgn, illegal_numbers)`` where ``pgn`` is built from the legal prefix and
-    ``illegal_numbers`` lists the 1-based move numbers that failed replay.
+    ``illegal_numbers`` lists the 1-based move numbers that failed replay (after
+    best-effort repair of common handwriting look-alikes).
     """
     import chess
 
@@ -142,19 +234,17 @@ def _replay_validate(turns: Sequence[Sequence[str]]) -> Tuple[str, List[int]]:
         white = turn[0] if len(turn) > 0 else ""
         black = turn[1] if len(turn) > 1 else ""
         if white:
-            try:
-                board.push_san(white)
-                legal_sans.append(white)
-            except Exception:
+            played = _push_or_repair(board, white)
+            if played is None:
                 illegal.append(num)
                 break
+            legal_sans.append(played)
         if black:
-            try:
-                board.push_san(black)
-                legal_sans.append(black)
-            except Exception:
+            played = _push_or_repair(board, black)
+            if played is None:
                 illegal.append(num)
                 break
+            legal_sans.append(played)
     return _build_pgn(legal_sans), illegal
 
 
