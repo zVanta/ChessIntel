@@ -277,45 +277,88 @@ def _fork_phrase(f: Dict[str, Any], board: chess.Board) -> str:
     return f"allowed a fork: {f['san']} attacks {' and '.join(named)}"
 
 
-def _blunder_threat(board_after: chess.Board) -> Optional[str]:
+def _fork_after_move(board_after: chess.Board,
+                     reply: Optional[chess.Move]) -> Optional[Dict[str, Any]]:
+    """Return a fork dict when the opponent's *actual* best reply ``reply``
+    forks the mover's pieces, else None.
+
+    A fork is only worth reporting when it is the move the engine actually
+    prefers as the refutation. Scanning every legal move for "a move that
+    attacks two of the mover's pieces" is what made every quiet move read as a
+    fork — there is almost always SOME forking move available somewhere on the
+    board, so the old scan described forks that never happened.
+    """
+    if reply is None:
+        return None
+    board = board_after.copy()
+    opp = board.turn
+    mover = not opp
+    try:
+        san = board.san(reply)
+    except Exception:
+        san = reply.uci()
+    moved_sq = reply.to_square
+    board.push(reply)
+    # A "fork" means the reply attacks two or more of the mover's real pieces
+    # (knight, bishop, rook, queen, king). Attacking two pawns is noise — it
+    # would otherwise label every recapture that hits a couple of pawns a fork.
+    targets = [
+        sq for sq, piece in board.piece_map().items()
+        if piece.color == mover
+        and piece.piece_type != chess.PAWN
+        and moved_sq in board.attackers(opp, sq)
+    ]
+    if len(targets) < 2:
+        return None
+    targets.sort(
+        key=lambda s: _FORK_TARGET_VALUE.get(board.piece_at(s).piece_type, 0),
+        reverse=True,
+    )
+    return {
+        "san": san,
+        "squares": [chess.square_name(s) for s in targets],
+        "value": sum(
+            _FORK_TARGET_VALUE.get(board.piece_at(s).piece_type, 0)
+            for s in targets
+        ),
+    }
+
+
+def _blunder_threat(board_after: chess.Board,
+                    reply: Optional[chess.Move] = None) -> Optional[str]:
     """Classify the immediate tactical damage of a just-played move.
 
     Returns a short label ("hung a piece", "walked into a fork") or None when
-    the mistake is not one of those two clean motifs. A royal fork (a check
-    that also attacks a piece) is reported as a fork — that is what the
-    opponent actually played, not a side detail.
+    the mistake is not one of those two clean motifs. A fork is only claimed
+    when the opponent's engine-best reply is itself the fork; without that
+    evidence we never speculate a fork.
     """
-    board_after = board_after.copy()
-    forks = _opponent_forks(board_after)
-    if any(f.get("value", 0) >= 100 for f in forks):
+    board = board_after.copy()
+    if _fork_after_move(board, reply) is not None:
         return "walked into a fork"
-    if _hanging_squares(board_after):
+    if _hanging_squares(board):
         return "hung a piece"
-    if forks:
-        return "walked into a fork"
     return None
 
 
-def _threat_detail(board_after: chess.Board) -> Optional[str]:
+def _threat_detail(board_after: chess.Board,
+                   reply: Optional[chess.Move] = None) -> Optional[str]:
     """Plain-language detail of the tactical damage, computed in code.
 
     Used by the report so the LLM never has to read a raw FEN and hallucinate
-    piece positions. A royal fork is reported first (it is what the opponent
-    actually played), then a hung piece, then any other fork.
+    piece positions. A fork is reported only when it is the opponent's actual
+    best reply; a hung piece is otherwise the only other motif named.
     """
     board = board_after.copy()
-    forks = _opponent_forks(board)
-    royal = next((f for f in forks if f.get("value", 0) >= 100), None)
-    if royal:
-        return _fork_phrase(royal, board)
+    fork = _fork_after_move(board, reply)
+    if fork:
+        return _fork_phrase(fork, board)
     hung = _hanging_squares(board)
     if hung:
         square = hung[0]
         piece = board.piece_at(square)
         name = chess.piece_name(piece.piece_type) if piece else "piece"
         return f"left a {name} on {chess.square_name(square)} hanging"
-    if forks:
-        return _fork_phrase(forks[0], board)
     return None
 
 
@@ -601,6 +644,7 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
             san = board.san(move)
         except Exception:
             san = str(move)
+        info_before = None
         try:
             info_before = engine.analyse(board, chess.engine.Limit(depth=depth))
             score_before = _score_to_cp(info_before["score"], mover)
@@ -627,6 +671,7 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
             pv_line = None
         is_capture = board.is_capture(move)
         board.push(move)
+        info_after = None
         try:
             info_after = engine.analyse(board, chess.engine.Limit(depth=depth))
             score_after = _score_to_cp(info_after["score"], mover)
@@ -664,6 +709,12 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
             phase = phase_of(ply)
             # NOTE: board.san(move) already includes the correct check (+) /
             # checkmate (#) annotation, so never append another one.
+            # The opponent's engine-best reply (pv[0] of the post-move
+            # analysis) is what fork detection is grounded in — never a
+            # speculative scan of every legal move.
+            reply = None
+            if isinstance(info_after, dict) and info_after.get("pv"):
+                reply = info_after["pv"][0]
             blunders.append({
                 "ply": ply,
                 "color": "white" if mover == chess.WHITE else "black",
@@ -675,8 +726,8 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
                 "class": class_label,
                 "fen": fen_before,
                 "line": pv_line,
-                "threat": _blunder_threat(board),
-                "threat_detail": _threat_detail(board),
+                "threat": _blunder_threat(board, reply),
+                "threat_detail": _threat_detail(board, reply),
                 "seconds": seconds,
                 "after_capture": after_capture,
             })
@@ -970,6 +1021,8 @@ def build_report_context(reports: List[Dict[str, Any]], platform: str,
             "outcome": outcome,
             "result": r.get("result") or "*",
             "opening": r.get("opening") or "",
+            # report["moves"] counts plies; surface full moves to the writer.
+            "moves": ((r.get("moves") or 0) + 1) // 2,
             "points_lost": r.get("points_lost") or 0.0,
             "acpl": r.get("acpl") or 0,
             "accuracy": r.get("accuracy") or 0,
@@ -1169,6 +1222,8 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
             # the raw result rather than letting the writer invent win/loss/draw.
             outcome_txt = outcome if outcome and outcome != "unknown" else f"result {result}"
             seg = f"vs {g['opponent']} ({outcome_txt})"
+            if g.get("moves"):
+                seg += f", {g['moves']} moves"
             if g.get("opening"):
                 seg += f", {g['opening']}"
             game_parts.append(seg)

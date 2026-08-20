@@ -471,7 +471,9 @@ def test_blunder_threat_labels():
     hung = chess.Board("6k1/8/8/8/1n6/P7/8/4K3 w - - 0 1")
     assert cc._blunder_threat(hung) == "hung a piece"
     fork = chess.Board("r3r1k1/8/8/3N4/8/8/8/7K w - - 0 1")
-    assert cc._blunder_threat(fork) == "walked into a fork"
+    # A fork is only claimed when the opponent's engine-best reply is the fork.
+    assert cc._blunder_threat(fork) is None
+    assert cc._blunder_threat(fork, chess.Move.from_uci("d5c7")) == "walked into a fork"
     assert cc._blunder_threat(chess.Board()) is None
 
 
@@ -487,11 +489,28 @@ def test_threat_detail_names_hanging_piece():
 def test_threat_detail_names_royal_fork():
     # White's Nc7+ forks the king (e8) and queen (e6) — a royal fork.
     board = chess.Board("4k3/8/4q3/3N4/8/8/8/7K w - - 0 1")
-    detail = cc._threat_detail(board)
+    detail = cc._threat_detail(board, chess.Move.from_uci("d5c7"))
     assert detail is not None
     assert "Nc7" in detail
     assert "e8" in detail
     assert "e6" in detail
+
+
+def test_threat_detail_never_invents_a_fork_without_reply():
+    # A fork is available (Nc7) but we have no engine reply — the old detector
+    # would have claimed it anyway and hallucinated "Nc7+ attacks ...".
+    board = chess.Board("r3r1k1/8/8/3N4/8/8/8/7K w - - 0 1")
+    assert cc._threat_detail(board) is None
+
+
+def test_fork_after_move_grounds_in_reply():
+    board = chess.Board("r3r1k1/8/8/3N4/8/8/8/7K w - - 0 1")
+    # Nc7 forks both rooks -> a real fork.
+    assert cc._fork_after_move(board, chess.Move.from_uci("d5c7")) is not None
+    # A quiet knight retreat attacks nothing -> not a fork.
+    assert cc._fork_after_move(board, chess.Move.from_uci("d5e3")) is None
+    # No reply at all -> never a fork.
+    assert cc._fork_after_move(board, None) is None
 
 
 # The exact position after 16...Qe6 in the game that produced the hallucinated
@@ -514,7 +533,7 @@ def test_opponent_forks_picks_royal_fork_not_quiet_moves():
 
 def test_threat_detail_real_game_royal_fork():
     board = chess.Board(REAL_GAME_AFTER_QE6)
-    detail = cc._threat_detail(board)
+    detail = cc._threat_detail(board, chess.Move.from_uci("d5c7"))
     assert detail == "allowed a fork: Nc7+ attacks the king on e8 and the queen on e6"
 
 
