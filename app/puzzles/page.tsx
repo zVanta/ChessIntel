@@ -5,7 +5,6 @@ import Link from "next/link";
 import { Chessground } from "@lichess-org/chessground";
 import { Chess } from "chess.js";
 import PageHeader from "@/components/PageHeader";
-import { dailyPuzzle } from "@/lib/lichess";
 
 type Cg = ReturnType<typeof Chessground>;
 
@@ -70,7 +69,15 @@ export default function PuzzlesPage() {
     setExplanation(null);
     setWrongCount(0);
     try {
-      setPuzzle(await dailyPuzzle());
+      const res = await fetch("/api/puzzles", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || !data.fen) {
+        throw new Error(
+          (data && (data as { error?: string }).error) ||
+            "Failed to load the puzzle. Please try again."
+        );
+      }
+      setPuzzle(data as Puzzle);
     } catch (err) {
       setStatus("error");
       setExplanation(err instanceof Error ? err.message : "Failed to load the puzzle.");

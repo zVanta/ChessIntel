@@ -251,6 +251,58 @@ def repertoire_suggest(req: RepertoireSuggestRequest) -> Dict[str, Any]:
     return {"fen": " ".join(board.fen().split()[:4]), "moves": moves}
 
 
+@app.get("/daily-puzzle")
+def daily_puzzle() -> Dict[str, Any]:
+    """Today's Lichess puzzle, fetched server-side with requests.
+
+    The browser must not call Lichess directly (ad-blockers and the VPS egress
+    both mangle that request). This endpoint proxies it: requests carries the
+    same User-Agent the game-fetch path already uses, and the FEN is derived
+    server-side.
+    """
+    import requests as _requests
+
+    url = "https://lichess.org/api/puzzle/daily"
+    try:
+        resp = _requests.get(
+            url,
+            headers={"User-Agent": chessintel_clone.USER_AGENT},
+            timeout=15,
+        )
+    except Exception as exc:  # pragma: no cover - depends on live network
+        from fastapi import HTTPException
+        raise HTTPException(status_code=502, detail=f"Could not reach Lichess: {exc}")
+
+    if resp.status_code != 200:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=502, detail=f"Lichess returned {resp.status_code}")
+
+    try:
+        data = resp.json()
+    except Exception:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=502, detail="Lichess returned a non-JSON response")
+
+    puzzle = data.get("puzzle") or {}
+    game = data.get("game") or {}
+    fen = puzzle.get("fen") or chessintel_clone._puzzle_fen(
+        game.get("pgn") or "", puzzle.get("initialPly") or 0
+    )
+    solution = puzzle.get("solution") or []
+    if not fen or not solution:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=502, detail="Unexpected puzzle payload")
+
+    return {
+        "id": puzzle.get("id") or "",
+        "rating": puzzle.get("rating") or 0,
+        "themes": puzzle.get("themes") or [],
+        "fen": fen,
+        "solution": solution,
+        "plays": puzzle.get("plays") or 0,
+    }
+
+
 @app.post("/spar")
 def spar(req: SparRequest) -> Dict[str, Any]:
     """One move for a human-like sparring partner at roughly ``req.elo``."""
