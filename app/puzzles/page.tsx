@@ -69,7 +69,10 @@ export default function PuzzlesPage() {
     setExplanation(null);
     setWrongCount(0);
     try {
-      const res = await fetch("/api/puzzles", { cache: "no-store" });
+      const res = await fetch("/api/puzzles", {
+        cache: "no-store",
+        signal: AbortSignal.timeout(20_000),
+      });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data || !data.fen) {
         throw new Error(
@@ -80,7 +83,13 @@ export default function PuzzlesPage() {
       setPuzzle(data as Puzzle);
     } catch (err) {
       setStatus("error");
-      setExplanation(err instanceof Error ? err.message : "Failed to load the puzzle.");
+      const message =
+        err instanceof Error && err.name === "TimeoutError"
+          ? "The puzzle service is taking too long. Please try again."
+          : err instanceof Error
+            ? err.message
+            : "Failed to load the puzzle.";
+      setExplanation(message);
     }
   }, []);
 
