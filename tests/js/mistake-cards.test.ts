@@ -17,7 +17,7 @@ describe("mistake cards (spaced repetition)", () => {
 
   function seedKid() {
     const user = createUser("parent@example.com", "hash", "user", 5);
-    const kid = createKid({ userId: user.id, name: "Aiden", chesscomUsername: "", lichessUsername: "" });
+    const kid = createKid({ userId: user.id, name: "Alex", chesscomUsername: "", lichessUsername: "" });
     const report = createReport(kid.id, "summary", "Fork awareness", "drill", 3.2, "{}");
     return { kid, report };
   }

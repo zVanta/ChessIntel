@@ -18,7 +18,7 @@ describe("opening repertoires", () => {
 
   it("creates, lists, and stores moves", () => {
     const user = createUser("p@e.com", "h", "user", 5);
-    const kid = createKid({ userId: user.id, name: "Aiden", chesscomUsername: "", lichessUsername: "" });
+    const kid = createKid({ userId: user.id, name: "Alex", chesscomUsername: "", lichessUsername: "" });
 
     const rep = createRepertoire(kid.id, "Italian", "white");
     expect(rep.color).toBe("white");

@@ -184,10 +184,10 @@ def test_analyze_game_reads_players_and_result_from_pgn_headers():
     # The PGN-paste / scoresheet path passes only {"pgn": ...}, so the player
     # names and result must be taken from the PGN headers — otherwise the
     # report shows "vs Opponent (unknown, *)" and the writer invents a draw.
-    pgn = '[Event "?"]\n[White "vince"]\n[Black "ds"]\n[Result "1-0"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 *'
+    pgn = '[Event "?"]\n[White "alice"]\n[Black "bob"]\n[Result "1-0"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 *'
     report = cc.analyze_game({"pgn": pgn, "source": "scoresheet", "external_id": ""}, FakeEngine(), depth=1)
-    assert report["white"] == "vince"
-    assert report["black"] == "ds"
+    assert report["white"] == "alice"
+    assert report["black"] == "bob"
     assert report["result"] == "1-0"
 
 
@@ -255,12 +255,12 @@ def test_analyze_game_records_blunder_color_and_per_color_points():
 
 
 def test_outcome_and_opponent_for_color():
-    report = {"white": "vince", "black": "ds", "result": "1-0"}
+    report = {"white": "alice", "black": "bob", "result": "1-0"}
     assert cc._outcome_for_color(report, "white") == "win"
     assert cc._outcome_for_color(report, "black") == "loss"
     assert cc._outcome_for_color(report, None) == "unknown"
-    assert cc._opponent_for_color(report, "white") == "ds"
-    assert cc._opponent_for_color(report, "black") == "vince"
+    assert cc._opponent_for_color(report, "white") == "bob"
+    assert cc._opponent_for_color(report, "black") == "alice"
 
 
 class MateThenWinEngine:
@@ -354,14 +354,14 @@ def test_analyze_game_does_not_flag_mate_to_win_as_blunder():
 
 
 def test_build_report_context_filters_moments_to_kid_color():
-    # The exact shape of the vince-vs-ds game: White won 1-0, and the only
+    # The exact shape of the alice-vs-bob game: White won 1-0, and the only
     # real blunder (Qe6 -> Nc7+ fork) was BLACK's move. A report for White must
     # NOT blame White for Black's Qe6.
     report = {
         "source": "scoresheet",
         "external_id": "",
-        "white": "vince",
-        "black": "ds",
+        "white": "alice",
+        "black": "bob",
         "result": "1-0",
         "opening": None,
         "played_at": None,
@@ -585,7 +585,7 @@ def test_report_prompt_no_moments_skips_moment_heading():
         "class_counts_black": {},
         "games_brief": [], "moments": [], "notes": "", "answers": [],
     }
-    prompt = cc._report_user_prompt("Vince", "Fork awareness", 1, "a drill", ctx)
+    prompt = cc._report_user_prompt("Alice", "Fork awareness", 1, "a drill", ctx)
     assert "### Moment 1" not in prompt
     assert "— —" not in prompt
     assert "No single flagrant moment" in prompt
