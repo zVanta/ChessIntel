@@ -51,7 +51,6 @@ export async function openingExplorer(fen: string): Promise<OpeningExplorerResul
 }
 
 const LICHESS_DAILY = "https://lichess.org/api/puzzle/daily";
-const USER_AGENT = "CheckmateCoach/1.0 (https://github.com/zVanta/ChessIntel)";
 
 export interface DailyPuzzle {
   id: string;
@@ -84,10 +83,17 @@ export function puzzleFenFromPgn(pgn: string, initialPly: number): string | null
 
 /** Fetch today's Lichess puzzle and reduce it to the client shape. */
 export async function dailyPuzzle(): Promise<DailyPuzzle> {
-  const res = await fetch(LICHESS_DAILY, {
-    headers: { "User-Agent": USER_AGENT },
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(LICHESS_DAILY, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    throw new Error(
+      "Couldn't reach Lichess. Your ad-blocker or network may be blocking lichess.org — allow it and try again."
+    );
+  }
   if (!res.ok) {
     throw new Error(`Lichess puzzle service unavailable (${res.status})`);
   }
