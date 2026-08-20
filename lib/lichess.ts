@@ -63,9 +63,8 @@ export interface DailyPuzzle {
 }
 
 /**
- * FEN of the position ``initialPly`` plies into a PGN. The Lichess puzzle API
- * returns the game PGN + the puzzle's starting ply but NOT the FEN, so we
- * replay the PGN to that ply with chess.js.
+ * FEN of the position ``initialPly`` plies into a PGN. Used only as a fallback
+ * when the puzzle API omits the FEN.
  */
 export function puzzleFenFromPgn(pgn: string, initialPly: number): string | null {
   try {
@@ -98,7 +97,9 @@ export async function dailyPuzzle(): Promise<DailyPuzzle> {
   if (!puzzle || !Array.isArray(puzzle.solution) || puzzle.solution.length === 0) {
     throw new Error("Unexpected puzzle payload");
   }
-  const fen = puzzleFenFromPgn(game?.pgn || "", puzzle.initialPly || 0);
+  const fen =
+    (typeof puzzle.fen === "string" && puzzle.fen) ||
+    puzzleFenFromPgn(game?.pgn || "", puzzle.initialPly || 0);
   if (!fen) {
     throw new Error("Could not derive the puzzle position");
   }
