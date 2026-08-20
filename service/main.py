@@ -253,23 +253,29 @@ def repertoire_suggest(req: RepertoireSuggestRequest) -> Dict[str, Any]:
 
 @app.get("/daily-puzzle")
 def daily_puzzle() -> Dict[str, Any]:
-    """Today's Lichess puzzle, fetched server-side with requests.
+    """Today's puzzle. Lichess first; chess.com as a fallback.
 
-    The browser must not call Lichess directly (ad-blockers and the VPS egress
-    both mangle that request). This endpoint proxies it: requests carries the
-    same User-Agent the game-fetch path already uses, and the FEN is derived
-    server-side.
+    The browser must not call these APIs directly (ad-blockers and the VPS
+    egress both mangle such requests), so this endpoint proxies them. Lichess
+    is sometimes challenged from data-center IPs; chess.com is the reliable
+    fallback (the game-fetch path already reaches it).
     """
+    try:
+        return _lichess_daily_puzzle()
+    except Exception:
+        return _chesscom_daily_puzzle()
+
+
+def _lichess_daily_puzzle() -> Dict[str, Any]:
     import requests as _requests
 
-    url = "https://lichess.org/api/puzzle/daily"
     try:
         resp = _requests.get(
-            url,
+            "https://lichess.org/api/puzzle/daily",
             headers={"User-Agent": chessintel_clone.USER_AGENT},
-            timeout=15,
+            timeout=8,
         )
-    except Exception as exc:  # pragma: no cover - depends on live network
+    except Exception as exc:
         from fastapi import HTTPException
         raise HTTPException(status_code=502, detail=f"Could not reach Lichess: {exc}")
 
@@ -291,7 +297,7 @@ def daily_puzzle() -> Dict[str, Any]:
     solution = puzzle.get("solution") or []
     if not fen or not solution:
         from fastapi import HTTPException
-        raise HTTPException(status_code=502, detail="Unexpected puzzle payload")
+        raise HTTPException(status_code=502, detail="Unexpected Lichess payload")
 
     return {
         "id": puzzle.get("id") or "",
@@ -300,6 +306,45 @@ def daily_puzzle() -> Dict[str, Any]:
         "fen": fen,
         "solution": solution,
         "plays": puzzle.get("plays") or 0,
+    }
+
+
+def _chesscom_daily_puzzle() -> Dict[str, Any]:
+    import requests as _requests
+
+    try:
+        resp = _requests.get(
+            "https://api.chess.com/pub/puzzle",
+            headers={"User-Agent": chessintel_clone.USER_AGENT},
+            timeout=8,
+        )
+    except Exception as exc:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=502, detail=f"Could not reach chess.com: {exc}")
+
+    if resp.status_code != 200:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=502, detail=f"chess.com returned {resp.status_code}")
+
+    try:
+        data = resp.json()
+    except Exception:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=502, detail="chess.com returned a non-JSON response")
+
+    fen = (data.get("fen") or "").strip()
+    solution = chessintel_clone._chesscom_puzzle_solution(data.get("pgn") or "")
+    if not fen or not solution:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=502, detail="Unexpected chess.com puzzle payload")
+
+    return {
+        "id": "chesscom-" + str(data.get("publish_time") or "daily"),
+        "rating": 0,
+        "themes": [data.get("title") or "daily"],
+        "fen": fen,
+        "solution": solution,
+        "plays": 0,
     }
 
 

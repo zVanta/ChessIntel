@@ -228,6 +228,21 @@ def test_puzzle_fen_none_on_bad_input():
     assert cc._puzzle_fen("not a pgn", 0) is None
 
 
+def test_chesscom_puzzle_solution_extracts_uci_line():
+    pgn = (
+        '[Event "?"]\n[FEN "8/p4bk1/3p3p/3P2p1/PP2B3/3PqQ1K/7P/8 b - - 0 43"]\n\n'
+        "43... g4+ 44. Kxg4 Bh5+ 45. Kxh5 Qg5# 0-1"
+    )
+    assert cc._chesscom_puzzle_solution(pgn) == [
+        "g5g4", "h3g4", "f7h5", "g4h5", "e3g5",
+    ]
+
+
+def test_chesscom_puzzle_solution_empty_on_bad_input():
+    assert cc._chesscom_puzzle_solution("") == []
+    assert cc._chesscom_puzzle_solution("not a pgn") == []
+
+
 def test_analyze_game_captures_clock_and_after_capture():
     pgn = ('[Event "T"]\n[White "Alice"]\n[Black "Bob"]\n\n'
            '1. e4 {5s} e5 {3s} 2. Nf3 {1s} Nc6 {4s} 3. d4 {10s} exd4 {2s} 4. Nxd4 {8s} *')

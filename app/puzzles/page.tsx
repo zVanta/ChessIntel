@@ -243,9 +243,11 @@ export default function PuzzlesPage() {
 
           <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="rounded-full bg-slate-100 px-2.5 py-0.5 font-semibold text-slate-700">
-                {puzzle.rating} rated
-              </span>
+              {puzzle.rating > 0 && (
+                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 font-semibold text-slate-700">
+                  {puzzle.rating} rated
+                </span>
+              )}
               {puzzle.themes.map((t) => (
                 <span key={t} className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-emerald-800">
                   {t}

@@ -566,6 +566,21 @@ def _puzzle_fen(pgn: str, initial_ply: int) -> Optional[str]:
         return None
 
 
+def _chesscom_puzzle_solution(pgn: str) -> List[str]:
+    """UCI moves of the chess.com daily-puzzle solution line.
+
+    chess.com's puzzle PGN starts at the puzzle position (its ``FEN`` header)
+    and its mainline IS the solution, alternating player/opponent moves.
+    """
+    try:
+        node = chess.pgn.read_game(io.StringIO(pgn or ""))
+        if node is None:
+            return []
+        return [c.move.uci() for c in node.mainline() if c.move is not None]
+    except Exception:
+        return []
+
+
 def _time_stats(reports: List[Dict[str, Any]], kid_color: Optional[str]) -> Optional[Dict[str, Any]]:
     """Clock-based insight: do mistakes get less thought than sound moves?"""
     rows = [
