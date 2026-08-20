@@ -474,15 +474,21 @@ def test_report_facts_intact_requires_kept_engine_facts():
         ],
     }
     why = cc._moment_why_failed(ctx["moments"][0])
+    rec = cc._moment_recommendation(ctx["moments"][0])
     good = (
         "# Vince\n\n## The pattern: Endgame technique\n\n"
         "### Moment 1 — Ne6 instead of e5 (vs Bob)\n\n"
-        f"**Why it failed:** {why}\n\n**Concept:** pause before moving"
+        f"**Why it failed:** {why}\n\n"
+        f"**What the engine recommends:** {rec}\n\n"
+        "**Concept:** pause before moving"
     )
     assert cc._report_facts_intact(good, ctx) is True
     # The model rewrote the fact line — the report can no longer be trusted.
     bad = good.replace(why, "your knight was hanging and simply got taken")
     assert cc._report_facts_intact(bad, ctx) is False
+    # Dropping the engine recommendation is just as bad.
+    bad_rec = good.replace(rec, "just do whatever feels active")
+    assert cc._report_facts_intact(bad_rec, ctx) is False
     # No moments at all — nothing to check, so accept.
     assert cc._report_facts_intact("anything at all", {"moments": []}) is True
 

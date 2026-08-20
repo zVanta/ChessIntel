@@ -1191,10 +1191,11 @@ _REPORT_SYSTEM = (
     "the engine's line, the position FEN, the cost in pawns, the opponent).\n"
     "- Copy move notation EXACTLY as given (+ / # / x / O-O / O-O-O). Never "
     "guess, add, or change it.\n"
-    "- Each Moment uses four bold labels: **Why it looked good**, **Why it "
-    "failed**, **Concept**, **Pattern**. Fill them from the facts — 'Why it "
-    "failed' must quote the 'tactical issue' fact and never invent a square, "
-    "piece, or capture.\n"
+    "- Each Moment uses five bold labels: **Why it looked good**, **Why it "
+    "failed**, **What the engine recommends**, **Concept**, **Pattern**. The "
+    "'Why it failed' and 'What the engine recommends' lines are FIXED facts — "
+    "keep them exactly as given; never add or remove a move, square, piece, "
+    "or capture.\n"
     "- NEVER describe the board or invent pieces, squares, or material. You have "
     "no board view — only the facts given (the played move, the engine's preferred "
     "move and line, the cost, and the 'what happened' note). Explain using exactly "
@@ -1254,6 +1255,23 @@ def _moment_why_failed(m: Optional[Dict[str, Any]]) -> str:
     if line:
         bits.append(f"The engine line was {line}.")
     return " ".join(bits)
+
+
+def _moment_recommendation(m: Optional[Dict[str, Any]]) -> str:
+    """Deterministic "what the engine recommends" line for a blunder moment.
+
+    Mirrors Lichess coach analysis: name Stockfish's top move and its
+    continuation line, so the advice is literally what the engine recommends.
+    """
+    if not m:
+        return "no moments in this set"
+    best = m.get("best")
+    if not best:
+        return "No engine alternative was recorded."
+    line = m.get("line")
+    if line:
+        return f"Play {best} — the engine's line is {line}."
+    return f"Play {best}."
 
 
 def _report_user_prompt(kid_name: str, habit: str, game_count: int,
@@ -1424,11 +1442,14 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
     moment1 = _moment_label(top_moment) if top_moment else "no moments in this set"
     moment2 = _moment_label(second_moment) if second_moment else "skip this heading"
 
-    # The "Why it failed" beat is pre-written from the deterministic facts
-    # (see _moment_why_failed) so the LLM can only keep it verbatim — it can
-    # no longer contradict Stockfish or invent a square, piece, or capture.
+    # The engine-grounded beats are pre-written from the deterministic facts
+    # (see _moment_why_failed / _moment_recommendation) so the LLM can only
+    # keep them verbatim — it can no longer contradict Stockfish, invent a
+    # square/piece/capture, or recommend a move the engine did not choose.
     why1 = _moment_why_failed(top_moment)
     why2 = _moment_why_failed(second_moment)
+    rec1 = _moment_recommendation(top_moment)
+    rec2 = _moment_recommendation(second_moment)
 
     # The "pattern" section is only about a concrete moment when one exists.
     # With no flagged blunder we must not invent a fork/move to fill the space.
@@ -1442,6 +1463,7 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
             "",
             "**Why it looked good:** <one sentence — what the player was probably trying>",
             "**Why it failed:** {why1}",
+            "**What the engine recommends:** {rec1}",
             "**Concept:** <one short phrase, e.g. the habit name>",
             "**Pattern:** <one sentence on what to recognise in similar positions>",
             "",
@@ -1452,6 +1474,7 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
                 "",
                 "**Why it looked good:** <...>",
                 "**Why it failed:** {why2}",
+                "**What the engine recommends:** {rec2}",
                 "**Concept:** <...>",
                 "**Pattern:** <...>",
                 "",
@@ -1561,6 +1584,8 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
     body = body.replace("{moment2}", moment2)
     body = body.replace("{why1}", why1)
     body = body.replace("{why2}", why2)
+    body = body.replace("{rec1}", rec1)
+    body = body.replace("{rec2}", rec2)
 
     return (
         "\n".join(facts)
@@ -1749,11 +1774,17 @@ def _report_facts_intact(markdown: str, ctx: Dict[str, Any]) -> bool:
         return True
     norm = " ".join(markdown.split())
     why1 = _moment_why_failed(moments[0])
+    rec1 = _moment_recommendation(moments[0])
     if " ".join(why1.split()) not in norm:
+        return False
+    if " ".join(rec1.split()) not in norm:
         return False
     if len(moments) > 1:
         why2 = _moment_why_failed(moments[1])
+        rec2 = _moment_recommendation(moments[1])
         if " ".join(why2.split()) not in norm:
+            return False
+        if " ".join(rec2.split()) not in norm:
             return False
     return True
 
