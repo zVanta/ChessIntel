@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/server", () => ({
   NextResponse: {
@@ -22,31 +22,28 @@ vi.mock("../../lib/auth", () => ({
   isAdmin: () => false,
 }));
 
-import { GET } from "../../app/api/puzzles/route";
+vi.mock("../../lib/python", () => ({
+  dailyPuzzle: vi.fn(),
+}));
 
-afterEach(() => {
-  vi.unstubAllGlobals();
+import { GET } from "../../app/api/puzzles/route";
+import { dailyPuzzle } from "../../lib/python";
+
+beforeEach(() => {
+  vi.mocked(dailyPuzzle).mockReset();
 });
 
 describe("GET /api/puzzles", () => {
-  it("reduces the Lichess daily puzzle to the client shape", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          game: { id: "g1", pgn: "1. e4" },
-          puzzle: {
-            id: "p1",
-            rating: 1700,
-            themes: ["fork", "mateIn1"],
-            fen: "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
-            solution: ["c4f7", "e8f7"],
-            plays: 42,
-          },
-        }),
-      })
-    );
+  it("passes the service puzzle through to the client", async () => {
+    vi.mocked(dailyPuzzle).mockResolvedValue({
+      id: "p1",
+      rating: 1700,
+      themes: ["fork", "mateIn1"],
+      fen: "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+      solution: ["c4f7", "e8f7"],
+      plays: 42,
+    });
+
     const res = await GET();
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
@@ -59,12 +56,12 @@ describe("GET /api/puzzles", () => {
     });
   });
 
-  it("returns 502 on a malformed payload", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ puzzle: {} }) })
-    );
+  it("returns 502 when the service fails", async () => {
+    vi.mocked(dailyPuzzle).mockRejectedValue(new Error("Lichess puzzle service unavailable."));
+
     const res = await GET();
     expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.error).toContain("Lichess puzzle service unavailable");
   });
 });

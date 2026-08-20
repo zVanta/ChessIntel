@@ -251,6 +251,38 @@ def repertoire_suggest(req: RepertoireSuggestRequest) -> Dict[str, Any]:
     return {"fen": " ".join(board.fen().split()[:4]), "moves": moves}
 
 
+@app.get("/daily-puzzle")
+def daily_puzzle() -> Dict[str, Any]:
+    """Today's Lichess puzzle via berserk, with the FEN derived by replaying
+    the game PGN to the puzzle's initial ply (the API does not send the FEN).
+    """
+    import berserk  # noqa: F401
+
+    try:
+        client = berserk.Client()
+        data = client.puzzles.daily_puzzle()
+    except Exception as exc:  # pragma: no cover - depends on live network
+        from fastapi import HTTPException
+        raise HTTPException(status_code=502, detail=f"Lichess puzzle service unavailable: {exc}")
+
+    puzzle = data.get("puzzle") or {}
+    game = data.get("game") or {}
+    fen = chessintel_clone._puzzle_fen(game.get("pgn") or "", puzzle.get("initialPly") or 0)
+    solution = puzzle.get("solution") or []
+    if not fen or not solution:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=502, detail="Unexpected puzzle payload")
+
+    return {
+        "id": puzzle.get("id") or "",
+        "rating": puzzle.get("rating") or 0,
+        "themes": puzzle.get("themes") or [],
+        "solution": solution,
+        "plays": puzzle.get("plays") or 0,
+        "fen": fen,
+    }
+
+
 @app.post("/spar")
 def spar(req: SparRequest) -> Dict[str, Any]:
     """One move for a human-like sparring partner at roughly ``req.elo``."""

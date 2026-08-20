@@ -541,6 +541,32 @@ def _fmt_seconds(seconds: float) -> str:
     return f"{seconds // 60}:{seconds % 60:02d}"
 
 
+def _puzzle_fen(pgn: str, initial_ply: int) -> Optional[str]:
+    """FEN of the position ``initial_ply`` plies into a game PGN.
+
+    The Lichess puzzle API returns the game's PGN and the puzzle's starting
+    ply but not the FEN itself, so we replay the PGN to that ply. Respects a
+    ``FEN`` header (Chess960 / from-position games); otherwise the standard
+    start position.
+    """
+    try:
+        node = chess.pgn.read_game(io.StringIO(pgn or ""))
+        if node is None:
+            return None
+        children = [c for c in node.mainline() if c.move is not None]
+        if not children:
+            return None
+        start_fen = (node.headers.get("FEN") or "").strip()
+        board = chess.Board(start_fen) if start_fen else chess.Board()
+        for ply, child in enumerate(children, start=1):
+            if ply > int(initial_ply or 0):
+                break
+            board.push(child.move)
+        return board.fen()
+    except Exception:
+        return None
+
+
 def _time_stats(reports: List[Dict[str, Any]], kid_color: Optional[str]) -> Optional[Dict[str, Any]]:
     """Clock-based insight: do mistakes get less thought than sound moves?"""
     rows = [

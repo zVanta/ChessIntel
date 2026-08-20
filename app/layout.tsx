@@ -79,6 +79,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <Link href="/privacy" className="underline hover:text-slate-600">
                   Privacy
                 </Link>
+                {" · "}
+                <Link href="/faq" className="underline hover:text-slate-600">
+                  FAQ
+                </Link>
               </footer>
             </div>
           </div>
@@ -103,6 +107,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               {SITE_NAME} · Built for parents of young chess players ·{" "}
               <Link href="/privacy" className="underline hover:text-slate-600">
                 Privacy
+              </Link>
+              {" · "}
+              <Link href="/faq" className="underline hover:text-slate-600">
+                FAQ
               </Link>
             </footer>
           </>
