@@ -145,7 +145,7 @@ by the client.
 | Layer | Tech |
 | --- | --- |
 | Web app | Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS |
-| Board viewer | chessground (Lichess's board) + chess.js |
+| Board viewer | chess.js + interactive board |
 | Data | SQLite via better-sqlite3 (schema auto-migrates on boot) |
 | Analysis service | FastAPI, python-chess, Stockfish |
 | OCR | Tesseract 5 |
@@ -272,7 +272,7 @@ npm run test:all   # pytest -q && vitest run
 ├── components/               # React components (client)
 │   ├── AnalyzeForm.tsx       # scoresheet / online / PGN / ask form
 │   ├── ScoreSheetUpload.tsx  # camera + gallery upload
-│   ├── ChessGameViewer.tsx   # chessground review board (eval bar + best-move arrow)
+│   ├── ChessGameViewer.tsx   # review board (eval bar + best-move arrow)
 │   ├── ReportChat.tsx        # interactive coach chat
 │   ├── ProfileView.tsx       # kid + account management
 │   ├── AdminPanel.tsx        # user/credit administration
@@ -316,8 +316,3 @@ per-player opt-in by a parent/guardian, and no email to minors. See
 ## License
 
 The project's own code is **MIT** — see `LICENSE`.
-
-The frontend bundles [chessground](https://github.com/lichess-org/chessground)
-(GPL-3.0-or-later) for the game-review board, so the distributed frontend as a
-whole is licensed GPL-3.0-or-later. chessground's own license ships in
-`node_modules/@lichess-org/chessground/LICENSE`.
