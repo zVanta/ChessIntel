@@ -1209,6 +1209,10 @@ _REPORT_SYSTEM = (
     "- Never invent moves, names, ratings, dates, or match results; stick to "
     "the facts given. If a game's outcome is unknown, state the raw score "
     "(e.g. 'ended 1-0') — never claim a draw or a win that is not in the facts.\n"
+    "- The ONLY moves and squares that may appear in the report are those named "
+    "in the facts (played moves, engine-preferred moves, engine lines, "
+    "alternative moves, and the quoted tactical issues). Never add a move, "
+    "square, piece, or capture that is not in them.\n"
     "- When a rating is given, pitch the vocabulary and depth to that level — "
     "simple words for beginners, sharper shorthand for stronger kids.\n"
     "- Use every extra fact you are given: move accuracy, the type of mistake "
@@ -1313,10 +1317,17 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
                 parts[0] += f" (played by {'White' if m['color'] == 'white' else 'Black'})"
             if m.get("best"):
                 parts.append(f"engine preferred {m['best']}")
+            else:
+                parts.append("engine preferred: none recorded — do NOT invent a preferred move")
             if m.get("threat_detail"):
                 parts.append(f"tactical issue: {m['threat_detail']}")
             elif m.get("threat"):
                 parts.append(f"mistake type: {m['threat']}")
+            else:
+                parts.append(
+                    "tactical issue: none detected — do NOT invent a tactic; "
+                    "explain the cost with the engine line and evaluation only"
+                )
             candidates = m.get("candidates") or []
             if candidates:
                 parts.append("alternative moves: " + ", ".join(
@@ -1387,6 +1398,33 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
     moment1 = _moment_label(top_moment) if top_moment else "no moments in this set"
     moment2 = _moment_label(second_moment) if second_moment else "skip this heading"
 
+    # The "Why it failed" beat is the one place the LLM used to invent tactics
+    # ("left a knight hanging" with no evidence). Pre-write it from the
+    # deterministic facts so the LLM can only keep it verbatim — it can no
+    # longer contradict Stockfish or invent a square, piece, or capture.
+    def _why_failed(m: Optional[Dict[str, Any]]) -> str:
+        if not m:
+            return "no moments in this set"
+        bits = []
+        detail = m.get("threat_detail")
+        threat = m.get("threat")
+        if detail:
+            bits.append(f"The tactical issue: {detail}.")
+        elif threat:
+            bits.append(f"Classified as: {threat}.")
+        else:
+            bits.append("No single tactical motif was detected here.")
+        cost = m.get("cp_loss")
+        if cost is not None:
+            bits.append(f"The move cost about {cost} pawns.")
+        line = m.get("line")
+        if line:
+            bits.append(f"The engine line was {line}.")
+        return " ".join(bits)
+
+    why1 = _why_failed(top_moment)
+    why2 = _why_failed(second_moment)
+
     # The "pattern" section is only about a concrete moment when one exists.
     # With no flagged blunder we must not invent a fork/move to fill the space.
     if top_moment:
@@ -1398,8 +1436,7 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
             "### Moment 1 — {moment1}",
             "",
             "**Why it looked good:** <one sentence — what the player was probably trying>",
-            "**Why it failed:** <the concrete problem, quoting the 'tactical issue' fact — "
-            "never add a square or piece that is not in it>",
+            "**Why it failed:** {why1}",
             "**Concept:** <one short phrase, e.g. the habit name>",
             "**Pattern:** <one sentence on what to recognise in similar positions>",
             "",
@@ -1409,7 +1446,7 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
                 "### Moment 2 — {moment2}",
                 "",
                 "**Why it looked good:** <...>",
-                "**Why it failed:** <...>",
+                "**Why it failed:** {why2}",
                 "**Concept:** <...>",
                 "**Pattern:** <...>",
                 "",
@@ -1517,6 +1554,8 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
     body = body.replace("{seen_in}", seen_in)
     body = body.replace("{moment1}", moment1)
     body = body.replace("{moment2}", moment2)
+    body = body.replace("{why1}", why1)
+    body = body.replace("{why2}", why2)
 
     return (
         "\n".join(facts)

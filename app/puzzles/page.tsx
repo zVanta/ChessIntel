@@ -63,11 +63,17 @@ export default function PuzzlesPage() {
   const [wrongCount, setWrongCount] = useState(0);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [explaining, setExplaining] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const savedRef = useRef(false);
+  const wrongCountRef = useRef(0);
 
   const loadPuzzle = useCallback(async () => {
     setStatus("loading");
     setExplanation(null);
     setWrongCount(0);
+    setSaved(false);
+    savedRef.current = false;
+    wrongCountRef.current = 0;
     try {
       const res = await fetch("/api/puzzles", {
         cache: "no-store",
@@ -134,6 +140,21 @@ export default function PuzzlesPage() {
     [puzzle]
   );
 
+  const saveCompletion = useCallback(async () => {
+    if (!puzzle || savedRef.current) return;
+    savedRef.current = true;
+    try {
+      await fetch("/api/puzzles/complete", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ puzzleId: puzzle.id, tries: wrongCountRef.current, solved: true }),
+      });
+      setSaved(true);
+    } catch {
+      setSaved(false);
+    }
+  }, [puzzle]);
+
   const onMove = useCallback(
     (orig: string, dest: string) => {
       const game = gameRef.current;
@@ -148,7 +169,8 @@ export default function PuzzlesPage() {
       if (expected.slice(0, 4) !== actual) {
         // Wrong: record it, revert the board, and explain.
         lastWrongRef.current = actual;
-        setWrongCount((c) => c + 1);
+        wrongCountRef.current += 1;
+        setWrongCount(wrongCountRef.current);
         cg.set({
           fen: startFenRef.current,
           turnColor: turn(game),
@@ -172,6 +194,7 @@ export default function PuzzlesPage() {
         stepRef.current = step + 1;
         cg.set({ fen: game.fen(), lastMove: [move.from, move.to] });
         setStatus("solved");
+        void saveCompletion();
         return;
       }
 
@@ -196,7 +219,7 @@ export default function PuzzlesPage() {
         });
       }, 450);
     },
-    [requestExplanation]
+    [requestExplanation, saveCompletion]
   );
 
   // (Re)build the board whenever a new puzzle loads.
@@ -281,6 +304,18 @@ export default function PuzzlesPage() {
                   You found the full line
                   {wrongCount ? ` after ${wrongCount} wrong tr${wrongCount === 1 ? "y" : "ies"}` : " on the first try"}.
                 </p>
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void loadPuzzle()}
+                    className="btn btn-primary"
+                  >
+                    Next puzzle
+                  </button>
+                  {saved && (
+                    <span className="text-xs font-medium text-emerald-700">Saved to your profile ✓</span>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="rounded-xl border border-slate-200 bg-white p-5">

@@ -136,6 +136,16 @@ function migrate(db: Database.Database): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS puzzle_completions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      puzzle_id TEXT NOT NULL,
+      tries INTEGER NOT NULL DEFAULT 0,
+      solved INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_puzzle_completions_user ON puzzle_completions(user_id);
     CREATE INDEX IF NOT EXISTS idx_reports_kid ON reports(kid_id);
     CREATE INDEX IF NOT EXISTS idx_games_report ON games(report_id);
     CREATE INDEX IF NOT EXISTS idx_followups_kid ON drill_followups(kid_id);
@@ -611,6 +621,36 @@ export function reviewMistakeCard(cardId: number, correct: boolean): MistakeCard
     .run(repetitions, intervalDays, lapses, dueAt, Date.now(), cardId);
 
   return getDb().prepare(`SELECT * FROM mistake_cards WHERE id = ?`).get(cardId) as MistakeCard;
+}
+
+export interface PuzzleCompletion {
+  id: number;
+  user_id: number;
+  puzzle_id: string;
+  tries: number;
+  solved: number;
+  created_at: string;
+}
+
+export function recordPuzzleCompletion(
+  userId: number,
+  puzzleId: string,
+  tries: number,
+  solved: boolean
+): PuzzleCompletion {
+  getDb()
+    .prepare(`INSERT INTO puzzle_completions (user_id, puzzle_id, tries, solved) VALUES (?, ?, ?, ?)`)
+    .run(userId, puzzleId, Math.max(0, Math.round(tries)), solved ? 1 : 0);
+  return getDb()
+    .prepare(`SELECT * FROM puzzle_completions WHERE id = last_insert_rowid()`)
+    .get() as PuzzleCompletion;
+}
+
+export function countPuzzlesSolved(userId: number): number {
+  const row = getDb()
+    .prepare(`SELECT COUNT(*) AS c FROM puzzle_completions WHERE user_id = ? AND solved = 1`)
+    .get(userId) as { c: number };
+  return Number(row?.c ?? 0);
 }
 
 // ---------------------------------------------------------------------------
