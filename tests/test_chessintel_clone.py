@@ -465,6 +465,28 @@ def test_generate_report_retries_with_fast_model(monkeypatch):
     assert "Short version" in text
 
 
+def test_report_facts_intact_requires_kept_engine_facts():
+    ctx = {
+        "moments": [
+            {"san": "Ne6", "best": "e5", "ply": 85, "phase": "endgame",
+             "cp_loss": 6.8, "opponent": "Bob", "line": "e5 Rg6 Rc8 Rh6",
+             "threat": None, "threat_detail": None, "candidates": []},
+        ],
+    }
+    why = cc._moment_why_failed(ctx["moments"][0])
+    good = (
+        "# Vince\n\n## The pattern: Endgame technique\n\n"
+        "### Moment 1 — Ne6 instead of e5 (vs Bob)\n\n"
+        f"**Why it failed:** {why}\n\n**Concept:** pause before moving"
+    )
+    assert cc._report_facts_intact(good, ctx) is True
+    # The model rewrote the fact line — the report can no longer be trusted.
+    bad = good.replace(why, "your knight was hanging and simply got taken")
+    assert cc._report_facts_intact(bad, ctx) is False
+    # No moments at all — nothing to check, so accept.
+    assert cc._report_facts_intact("anything at all", {"moments": []}) is True
+
+
 # ---------------------------------------------------------------------------
 # accuracy + threat detection
 # ---------------------------------------------------------------------------

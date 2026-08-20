@@ -1230,6 +1230,32 @@ _REPORT_SYSTEM = (
 ).replace("{site_name}", SITE_NAME)
 
 
+def _moment_why_failed(m: Optional[Dict[str, Any]]) -> str:
+    """Deterministic "Why it failed" fact line for a blunder moment.
+
+    Written in code so the LLM can only keep it verbatim — it can no longer
+    contradict Stockfish or invent a square, piece, or capture.
+    """
+    if not m:
+        return "no moments in this set"
+    bits = []
+    detail = m.get("threat_detail")
+    threat = m.get("threat")
+    if detail:
+        bits.append(f"The tactical issue: {detail}.")
+    elif threat:
+        bits.append(f"Classified as: {threat}.")
+    else:
+        bits.append("No single tactical motif was detected here.")
+    cost = m.get("cp_loss")
+    if cost is not None:
+        bits.append(f"The move cost about {cost} pawns.")
+    line = m.get("line")
+    if line:
+        bits.append(f"The engine line was {line}.")
+    return " ".join(bits)
+
+
 def _report_user_prompt(kid_name: str, habit: str, game_count: int,
                         drill: str, ctx: Dict[str, Any]) -> str:
     facts = [
@@ -1398,32 +1424,11 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
     moment1 = _moment_label(top_moment) if top_moment else "no moments in this set"
     moment2 = _moment_label(second_moment) if second_moment else "skip this heading"
 
-    # The "Why it failed" beat is the one place the LLM used to invent tactics
-    # ("left a knight hanging" with no evidence). Pre-write it from the
-    # deterministic facts so the LLM can only keep it verbatim — it can no
-    # longer contradict Stockfish or invent a square, piece, or capture.
-    def _why_failed(m: Optional[Dict[str, Any]]) -> str:
-        if not m:
-            return "no moments in this set"
-        bits = []
-        detail = m.get("threat_detail")
-        threat = m.get("threat")
-        if detail:
-            bits.append(f"The tactical issue: {detail}.")
-        elif threat:
-            bits.append(f"Classified as: {threat}.")
-        else:
-            bits.append("No single tactical motif was detected here.")
-        cost = m.get("cp_loss")
-        if cost is not None:
-            bits.append(f"The move cost about {cost} pawns.")
-        line = m.get("line")
-        if line:
-            bits.append(f"The engine line was {line}.")
-        return " ".join(bits)
-
-    why1 = _why_failed(top_moment)
-    why2 = _why_failed(second_moment)
+    # The "Why it failed" beat is pre-written from the deterministic facts
+    # (see _moment_why_failed) so the LLM can only keep it verbatim — it can
+    # no longer contradict Stockfish or invent a square, piece, or capture.
+    why1 = _moment_why_failed(top_moment)
+    why2 = _moment_why_failed(second_moment)
 
     # The "pattern" section is only about a concrete moment when one exists.
     # With no flagged blunder we must not invent a fork/move to fill the space.
@@ -1731,6 +1736,28 @@ def _build_markdown_report(kid_name: str, habit: str, game_count: int,
     ])
 
 
+def _report_facts_intact(markdown: str, ctx: Dict[str, Any]) -> bool:
+    """True when the LLM report kept the deterministic engine facts verbatim.
+
+    The injected "Why it failed" lines are the non-negotiable facts. If the
+    model deleted or rewrote them (whitespace re-wrapping aside), the report
+    can no longer be trusted and the caller must fall back to the deterministic
+    one.
+    """
+    moments = ctx.get("moments") or []
+    if not moments:
+        return True
+    norm = " ".join(markdown.split())
+    why1 = _moment_why_failed(moments[0])
+    if " ".join(why1.split()) not in norm:
+        return False
+    if len(moments) > 1:
+        why2 = _moment_why_failed(moments[1])
+        if " ".join(why2.split()) not in norm:
+            return False
+    return True
+
+
 def generate_report(kid_name: str, habit: str, game_count: int,
                     api_key: Optional[str] = None,
                     context: Optional[Dict[str, Any]] = None) -> str:
@@ -1756,8 +1783,8 @@ def generate_report(kid_name: str, habit: str, game_count: int,
 
     # Try the configured model first, then the fast DeepSeek model, and only
     # then the deterministic template. deepseek-reasoner can exceed the request
-    # timeout on long prompts, and a failed or empty answer must never silently
-    # downgrade the whole report to the formulaic fallback.
+    # timeout on long prompts, and a failed, empty, or fact-dropping answer
+    # must never silently downgrade the whole report to the formulaic fallback.
     for model in (None, "deepseek-chat"):
         try:
             text = llm.complete(
@@ -1768,7 +1795,7 @@ def generate_report(kid_name: str, habit: str, game_count: int,
                 model=model,
             )
             cleaned = (text or "").strip()
-            if cleaned:
+            if cleaned and _report_facts_intact(cleaned, ctx):
                 return cleaned
         except Exception:
             continue
