@@ -7,7 +7,10 @@ games into a plain-language coach report. A parent connects a chess.com or
 Lichess account, uploads a photo of a paper scoresheet, or pastes a PGN — and
 the app runs every game through Stockfish, finds the one recurring habit that's
 costing points, and writes a GM-style report with player-specific drills. A
-"memory loop" then checks whether each drill actually held in later games.
+"memory loop" then checks whether each drill actually held in later games. A
+practice suite — mistake cards, puzzles, an opening repertoire builder, and a
+sparring partner — is built on top of the same engine analysis, so practice is
+always grounded in the kid's own games.
 
 It's a fully original product — original name, branding, copy, and design, with
 no third-party branding or content. (The internal analysis module is named
@@ -28,8 +31,10 @@ no third-party branding or content. (The internal analysis module is named
   Multi-PV, so the report lists Stockfish's top alternatives with evaluations,
   not just the single "best" move.
 - **Tactical threat detection** — each blunder is classified as hanging a piece
-  or walking into a fork, feeding two extra habit tags ("Hung pieces",
-  "Fork awareness") with their own drills.
+  or walking into a fork. A fork is only claimed when it is the engine's actual
+  best reply — never a speculative scan of every legal move — so the report
+  never invents tactics. Feeds two habit tags ("Hung pieces", "Fork awareness")
+  with their own drills.
 - **ELO-aware coaching** — report vocabulary and depth are pitched to the kid's
   rating (online, USCF, or FIDE).
 - **Lichess-style game viewer** — an interactive review board with an
@@ -40,6 +45,15 @@ no third-party branding or content. (The internal analysis module is named
   kid's most recent prior report for the same habit.
 - **Ask the coach** — an interactive chat on each report for follow-up
   questions.
+- **Structured per-move explanations** — each key mistake is written as a
+  "Moment" with four labeled beats: why it looked good, why it failed, the
+  concept, and the pattern to remember.
+- **Clock & reflex detection** — per-move clocks flag mistakes played in under
+  three seconds, so "rushed" is diagnosed separately from "didn't know".
+- **Practice suite** — mistake cards with spaced repetition (Woodpecker-style)
+  and a "try the fix" board; Lichess daily puzzles with coach hints; an opening
+  repertoire builder (Stockfish multi-PV + the Lichess opening explorer); and
+  an Elo-scaled sparring partner.
 - **Kid profiles** — age, USCF/FIDE/online ratings, focus notes, and linked
   chess.com / Lichess usernames.
 - **Accounts & credits** — parent login, an admin panel for managing users, and
@@ -59,12 +73,19 @@ no third-party branding or content. (The internal analysis module is named
                   ┌──────────────────────────────────────────────┐
                   │               Next.js app (web)              │
                   │  pages: /  /login /dashboard /analyze        │
+                  │         /reports /report/[id] /game/[id]     │
                   │         /progress /profile /admin            │
-                  │         /report/[id] /game/[id] /onboard     │
+                  │         /train /puzzles /repertoire          │
+                  │         /repertoire/[id] /sparring /faq      │
+                  │         /onboard /privacy                    │
                   │  routes: /api/auth/* /api/kids/*             │
                   │          /api/analyze /api/analyze-pgn       │
                   │          /api/upload-scoresheet /api/ask     │
                   │          /api/jobs/* /api/progress/*         │
+                  │          /api/train /api/puzzles             │
+                  │          /api/puzzles/explain /api/spar      │
+                  │          /api/repertoires/*                  │
+                  │          /api/opening-explorer               │
                   │          /api/checkout /api/webhooks         │
                   │          /api/admin/users/*                  │
                   └───────┬───────────────┬──────────────────────┘
@@ -109,6 +130,10 @@ no third-party branding or content. (The internal analysis module is named
    the resulting PGN through the same path.
 4. **Ask the coach** — `POST /api/ask` answers a question about a report using
    the same LLM provider.
+5. **Practice** — every report seeds the practice suite: blunders become
+   spaced-repetition mistake cards (`/api/train`), and the repertoire builder
+   reuses Stockfish multi-PV (`/api/repertoires/suggest`) plus the Lichess
+   opening explorer (`/api/opening-explorer`).
 
 Long-running analyses run as background jobs (`/api/jobs/[id]`) and are polled
 by the client.
@@ -232,9 +257,15 @@ npm run test:all   # pytest -q && vitest run
 │   │   ├── jobs/[id]/        # background job polling
 │   │   ├── progress/[kidId]/ # drill follow-up history
 │   │   ├── reports/          # list + [id] delete (ownership-scoped)
+│   │   ├── train/            # mistake cards (GET due + POST review)
+│   │   ├── puzzles/  puzzles/explain/  # Lichess daily puzzle + hints
+│   │   ├── repertoires/      # repertoire CRUD + suggest + moves
+│   │   ├── spar/             # Elo-scaled sparring move
+│   │   ├── opening-explorer/ # Lichess opening database
 │   │   ├── checkout/  webhooks/  # Stripe funding
-│   ├── dashboard/  analyze/  progress/  profile/
-│   ├── admin/  login/  report/[id]/  game/[id]/  reports/
+│   ├── dashboard/  analyze/  progress/  profile/  reports/
+│   ├── admin/  login/  report/[id]/  game/[id]/
+│   ├── train/  puzzles/  repertoire/  repertoire/[id]/  sparring/  faq/
 │   ├── onboard/  privacy/
 │   ├── page.tsx              # landing
 │   ├── layout.tsx  globals.css  manifest.ts
@@ -248,18 +279,20 @@ npm run test:all   # pytest -q && vitest run
 │   ├── ReportsList.tsx       # report list + delete
 │   ├── AddKidForm.tsx  KidList.tsx  ProgressView.tsx
 │   ├── LoginForm.tsx  LogoutButton.tsx  PrintButton.tsx
+│   ├── Sidebar.tsx  PageHeader.tsx  MobileNav.tsx  # app shell + shared header
 │   └── ServiceWorkerRegister.tsx
 ├── lib/
 │   ├── db.ts                 # SQLite schema + typed helpers (migrates on boot)
 │   ├── persist.ts            # report persistence + memory loop
 │   ├── python.ts             # FastAPI client
+│   ├── lichess.ts            # Lichess opening explorer + daily puzzle
 │   ├── auth.ts  password.ts  # sessions + scrypt hashing
 │   ├── credits.ts  rateLimit.ts
 │   ├── billing.ts  stripe.ts # funding gate + Stripe helpers
 │   ├── jobs.ts  poll.ts      # background job helpers
 │   ├── markdown.tsx          # XSS-safe markdown renderer
 │   ├── validation.ts  types.ts
-├── service/main.py           # FastAPI service wrapping the pipeline
+├── service/main.py           # FastAPI service (analyze, OCR, ask, puzzle-explain, repertoire-suggest, spar)
 ├── chessintel_clone.py       # analysis pipeline (fetch → engine → aggregate → report)
 ├── scoresheet_ocr.py         # scoresheet photo → PGN
 ├── chess_agent.py            # ChessAgent MCP client
