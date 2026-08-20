@@ -147,9 +147,11 @@ export default function PuzzlesPage() {
       const actual = `${orig}${dest}`;
       if (expected.slice(0, 4) !== actual) {
         // Wrong: revert and explain.
-        cg.set({ fen: startFenRef.current });
-        lastWrongRef.current = actual;
-        setWrongCount((c) => c + 1);
+      cg.set({
+        fen: startFenRef.current,
+        turnColor: turn(game),
+        lastMove: undefined,
+      });
         void requestExplanation(actual, false);
         return;
       }
@@ -210,6 +212,7 @@ export default function PuzzlesPage() {
       coordinates: true,
       highlight: { lastMove: true, check: true },
       animation: { enabled: true, duration: 150 },
+      draggable: { enabled: true, showGhost: true },
       movable: {
         color: turn(game),
         free: false,
@@ -251,7 +254,7 @@ export default function PuzzlesPage() {
       {(status === "playing" || status === "solved") && puzzle && (
         <div className="grid gap-6 md:grid-cols-[minmax(0,400px)_1fr]">
           <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <div ref={boardRef} className="aspect-square w-full" />
+            <div ref={boardRef} className="aspect-square w-full" style={{ touchAction: "none" }} />
           </div>
 
           <div className="space-y-4">
@@ -301,7 +304,7 @@ export default function PuzzlesPage() {
                     onClick={() => void loadPuzzle()}
                     className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
                   >
-                    Skip
+                    Restart
                   </button>
                 </div>
               </div>
