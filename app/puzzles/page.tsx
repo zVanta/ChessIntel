@@ -81,6 +81,10 @@ export default function PuzzlesPage() {
         );
       }
       setPuzzle(data as Puzzle);
+      // The board is only rendered once status leaves "loading". The
+      // board-rebuild effect can't set this itself (it needs the ref), so do
+      // it here to break the loading→board→effect deadlock.
+      setStatus("playing");
     } catch (err) {
       setStatus("error");
       const message =
