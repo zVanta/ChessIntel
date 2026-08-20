@@ -493,6 +493,27 @@ def test_report_facts_intact_requires_kept_engine_facts():
     assert cc._report_facts_intact("anything at all", {"moments": []}) is True
 
 
+def test_report_facts_intact_rejects_invented_piece_move():
+    ctx = {
+        "moments": [
+            {"san": "Ne6", "best": "e5", "ply": 85, "phase": "endgame",
+             "cp_loss": 6.8, "opponent": "Bob", "line": "e5 Rg6 Rc8 Rh6",
+             "threat": None, "threat_detail": None, "candidates": []},
+        ],
+    }
+    why = cc._moment_why_failed(ctx["moments"][0])
+    rec = cc._moment_recommendation(ctx["moments"][0])
+    base = (
+        "# Vince\n\n## The pattern: Endgame technique\n\n"
+        "### Moment 1 — Ne6 instead of e5 (vs Bob)\n\n"
+        f"**Why it failed:** {why}\n\n"
+        f"**What the engine recommends:** {rec}\n\n"
+        "**Concept:** develop with Nf3 instead"
+    )
+    # "Nf3" is a piece move the engine never saw in the facts.
+    assert cc._report_facts_intact(base, ctx) is False
+
+
 # ---------------------------------------------------------------------------
 # accuracy + threat detection
 # ---------------------------------------------------------------------------
@@ -552,6 +573,13 @@ def test_blunder_threat_labels():
     assert cc._blunder_threat(fork) is None
     assert cc._blunder_threat(fork, chess.Move.from_uci("d5c7")) == "walked into a fork"
     assert cc._blunder_threat(chess.Board()) is None
+
+
+def test_blunder_threat_detects_pin():
+    # Black's knight on f6 is pinned by the white bishop on g5 to the king d8.
+    board = chess.Board("3k4/8/5n2/6B1/8/8/8/K7 w - - 0 1")
+    assert cc._blunder_threat(board) == "walked into a pin"
+    assert cc._threat_detail(board) == "pinned the knight on f6 to the king"
 
 
 def test_threat_detail_names_hanging_piece():

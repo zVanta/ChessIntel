@@ -345,18 +345,98 @@ def _fork_after_move(board_after: chess.Board,
     }
 
 
+_SLIDER_DIRS = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1))
+
+
+def _pin_info(board: chess.Board, square: chess.Square) -> Optional[Dict[str, Any]]:
+    """If the piece on ``square`` is pinned by an enemy slider, return
+    ``{"slider_square", "shielded_square"}``; else None.
+
+    A pin counts only when the pinned piece shields its own king or a piece
+    worth more than itself along a bishop/rook/queen line — a real tactical
+    liability, not merely "an enemy piece attacks this square".
+    """
+    piece = board.piece_at(square)
+    if piece is None or piece.piece_type == chess.KING:
+        return None
+    color = piece.color
+    enemy = not color
+    piece_val = _FORK_TARGET_VALUE.get(piece.piece_type, 0)
+    f, r = chess.square_file(square), chess.square_rank(square)
+    for df, dr in _SLIDER_DIRS:
+        ff, rr, shielded_sq = f + df, r + dr, None
+        while 0 <= ff < 8 and 0 <= rr < 8:
+            s = chess.square(ff, rr)
+            if board.piece_at(s) is not None:
+                shielded_sq = s
+                break
+            ff += df
+            rr += dr
+        if shielded_sq is None:
+            continue
+        shielded = board.piece_at(shielded_sq)
+        if shielded.color != color:
+            continue
+        ff, rr, slider_sq = f - df, r - dr, None
+        while 0 <= ff < 8 and 0 <= rr < 8:
+            s = chess.square(ff, rr)
+            p = board.piece_at(s)
+            if p is not None:
+                if p.color == enemy and p.piece_type in (chess.BISHOP, chess.ROOK, chess.QUEEN):
+                    slider_sq = s
+                break
+            ff -= df
+            rr -= dr
+        if slider_sq is None:
+            continue
+        slider = board.piece_at(slider_sq)
+        if slider.piece_type == chess.BISHOP and df * dr == 0:
+            continue
+        if slider.piece_type == chess.ROOK and df * dr != 0:
+            continue
+        if shielded.piece_type == chess.KING or \
+                _FORK_TARGET_VALUE.get(shielded.piece_type, 0) > piece_val:
+            return {"slider_square": slider_sq, "shielded_square": shielded_sq}
+    return None
+
+
+def _pinned_pieces(board: chess.Board) -> List[chess.Square]:
+    """Squares of the side that just moved whose piece is genuinely pinned."""
+    mover = not board.turn
+    return [
+        sq for sq, p in board.piece_map().items()
+        if p.color == mover and p.piece_type != chess.KING and _pin_info(board, sq)
+    ]
+
+
+def _pin_phrase(board: chess.Board, square: chess.Square) -> str:
+    piece = board.piece_at(square)
+    info = _pin_info(board, square)
+    pname = chess.piece_name(piece.piece_type) if piece else "piece"
+    shielded = board.piece_at(info["shielded_square"])
+    if shielded.piece_type == chess.KING:
+        return f"pinned the {pname} on {chess.square_name(square)} to the king"
+    sname = chess.piece_name(shielded.piece_type)
+    return (
+        f"pinned the {pname} on {chess.square_name(square)} to the "
+        f"{sname} on {chess.square_name(info['shielded_square'])}"
+    )
+
+
 def _blunder_threat(board_after: chess.Board,
                     reply: Optional[chess.Move] = None) -> Optional[str]:
     """Classify the immediate tactical damage of a just-played move.
 
-    Returns a short label ("hung a piece", "walked into a fork") or None when
-    the mistake is not one of those two clean motifs. A fork is only claimed
-    when the opponent's engine-best reply is itself the fork; without that
-    evidence we never speculate a fork.
+    Returns a short label ("hung a piece", "walked into a fork",
+    "walked into a pin") or None. A fork is only claimed when the opponent's
+    engine-best reply is itself the fork; a pin is claimed from the static
+    board (a slider pinning a piece to the king or a more valuable piece).
     """
     board = board_after.copy()
     if _fork_after_move(board, reply) is not None:
         return "walked into a fork"
+    if _pinned_pieces(board):
+        return "walked into a pin"
     if _hanging_squares(board):
         return "hung a piece"
     return None
@@ -368,12 +448,15 @@ def _threat_detail(board_after: chess.Board,
 
     Used by the report so the LLM never has to read a raw FEN and hallucinate
     piece positions. A fork is reported only when it is the opponent's actual
-    best reply; a hung piece is otherwise the only other motif named.
+    best reply; otherwise a genuine pin, then a hung piece, is named.
     """
     board = board_after.copy()
     fork = _fork_after_move(board, reply)
     if fork:
         return _fork_phrase(fork, board)
+    pinned = _pinned_pieces(board)
+    if pinned:
+        return _pin_phrase(board, pinned[0])
     hung = _hanging_squares(board)
     if hung:
         square = hung[0]
@@ -856,6 +939,8 @@ def _tag_blunders(blunders: List[Dict[str, Any]]) -> List[str]:
             tags.append("Hung pieces")
         elif threat == "walked into a fork":
             tags.append("Fork awareness")
+        elif threat == "walked into a pin":
+            tags.append("Pin awareness")
     # De-duplicate while preserving frequency order for aggregation.
     seen = set()
     result = []
@@ -1226,6 +1311,15 @@ _REPORT_SYSTEM = (
     "the same moment for Moment 1 and Moment 2.\n"
     "- When past progress is given, reference it — name what improved and what "
     "came back, so the player sees their own trajectory across reports.\n"
+    "- OPENING POLICY: do not critique opening moves (1–10) unless one is a "
+    "blunder or misses a tactic. Acknowledge the opening by name and move on; "
+    "spend the words on the middlegame and endgame moments in the facts.\n"
+    "- Explain evaluations in pawns (e.g. 'about two pawns', '+1.2 pawns'), "
+    "never raw centipawns.\n"
+    "- If the engine line ends in checkmate, explain the mating sequence from "
+    "the line — name the final checking move.\n"
+    "- Coach the move, never the player: say 'that move hung the knight', not "
+    "'you are careless'. No labels about the child's character.\n"
     "- Write in Markdown, keep every heading and the '---' rules exactly as "
     "given, and vary the prose between them. Keep the report under ~700 words."
 ).replace("{site_name}", SITE_NAME)
@@ -1761,37 +1855,98 @@ def _build_markdown_report(kid_name: str, habit: str, game_count: int,
     ])
 
 
-def _report_facts_intact(markdown: str, ctx: Dict[str, Any]) -> bool:
-    """True when the LLM report kept the deterministic engine facts verbatim.
+_MOVE_TOKEN_RE = re.compile(
+    r"O-O(?:-O)?(?:[+#])?"
+    r"|[KQRBN][a-h]?[1-8]?x?[a-h][1-8](?:=[QRBN])?[+#]?"
+    r"|[a-h]x[a-h][1-8](?:=[QRBN])?[+#]?"
+    r"|[a-h][1-8]=[QRBN][+#]?"
+)
 
-    The injected "Why it failed" lines are the non-negotiable facts. If the
-    model deleted or rewrote them (whitespace re-wrapping aside), the report
-    can no longer be trusted and the caller must fall back to the deterministic
-    one.
+
+def _collect_known_moves(reports: List[Dict[str, Any]]) -> set:
+    """Every move SAN that legitimately appears in the analysis facts.
+
+    Fed to the post-generation validator so any piece move, capture, castling,
+    or promotion the LLM writes must be one the engine actually saw.
+    """
+    known: set = set()
+    for r in reports:
+        for d in r.get("moves_detail") or []:
+            t = (d.get("san") or "").strip()
+            if t:
+                known.add(t)
+                known.add(t.rstrip("+#"))
+        for b in r.get("blunders") or []:
+            for key in ("san", "best"):
+                t = (b.get(key) or "").strip()
+                if t:
+                    known.add(t)
+                    known.add(t.rstrip("+#"))
+            for tok in (b.get("line") or "").split():
+                tok = tok.strip().rstrip("+#")
+                if tok:
+                    known.add(tok)
+            for c in b.get("candidates") or []:
+                t = (c.get("san") or "").strip()
+                if t:
+                    known.add(t)
+                    known.add(t.rstrip("+#"))
+    return known
+
+
+def _report_facts_intact(markdown: str, ctx: Dict[str, Any],
+                         extra_moves: Optional[Iterable[str]] = None) -> bool:
+    """True when the LLM report kept the engine facts intact.
+
+    Two layers: (1) the deterministic "Why it failed" and "What the engine
+    recommends" lines must survive verbatim; (2) every piece move, capture,
+    castling, or promotion the model wrote must be one the engine actually saw
+    (from ``extra_moves`` or the moments themselves). Bare pawn pushes are not
+    checked — they are ambiguous with square names in prose.
     """
     moments = ctx.get("moments") or []
-    if not moments:
-        return True
     norm = " ".join(markdown.split())
-    why1 = _moment_why_failed(moments[0])
-    rec1 = _moment_recommendation(moments[0])
-    if " ".join(why1.split()) not in norm:
-        return False
-    if " ".join(rec1.split()) not in norm:
-        return False
-    if len(moments) > 1:
-        why2 = _moment_why_failed(moments[1])
-        rec2 = _moment_recommendation(moments[1])
-        if " ".join(why2.split()) not in norm:
+    if moments:
+        why1 = _moment_why_failed(moments[0])
+        rec1 = _moment_recommendation(moments[0])
+        if " ".join(why1.split()) not in norm:
             return False
-        if " ".join(rec2.split()) not in norm:
+        if " ".join(rec1.split()) not in norm:
+            return False
+        if len(moments) > 1:
+            why2 = _moment_why_failed(moments[1])
+            rec2 = _moment_recommendation(moments[1])
+            if " ".join(why2.split()) not in norm:
+                return False
+            if " ".join(rec2.split()) not in norm:
+                return False
+
+    allowed = set(extra_moves or ())
+    for m in moments:
+        for key in ("san", "best"):
+            t = (m.get(key) or "").strip()
+            if t:
+                allowed.add(t)
+                allowed.add(t.rstrip("+#"))
+        for tok in (m.get("line") or "").split():
+            tok = tok.strip().rstrip("+#")
+            if tok:
+                allowed.add(tok)
+        for c in m.get("candidates") or []:
+            t = (c.get("san") or "").strip()
+            if t:
+                allowed.add(t)
+                allowed.add(t.rstrip("+#"))
+    for tok in _MOVE_TOKEN_RE.findall(markdown):
+        if tok.rstrip("+#") not in allowed:
             return False
     return True
 
 
 def generate_report(kid_name: str, habit: str, game_count: int,
                     api_key: Optional[str] = None,
-                    context: Optional[Dict[str, Any]] = None) -> str:
+                    context: Optional[Dict[str, Any]] = None,
+                    extra_moves: Optional[Iterable[str]] = None) -> str:
     """Generate a full markdown coach report for a kid.
 
     Uses the configured LLM provider (DeepSeek by default, or LibreChat — see
@@ -1826,7 +1981,7 @@ def generate_report(kid_name: str, habit: str, game_count: int,
                 model=model,
             )
             cleaned = (text or "").strip()
-            if cleaned and _report_facts_intact(cleaned, ctx):
+            if cleaned and _report_facts_intact(cleaned, ctx, extra_moves):
                 return cleaned
         except Exception:
             continue
@@ -2086,7 +2241,10 @@ def run_analysis(platform: str, username: str, kid_name: str = "Player",
         points_lost = round(sum(r.get("points_lost_black", 0.0) for r in reports), 2)
     else:
         points_lost = round(sum(r.get("points_lost", 0.0) for r in reports), 2)
-    markdown = generate_report(kid_name, top_habit, len(reports), context=context)
+    markdown = generate_report(
+        kid_name, top_habit, len(reports), context=context,
+        extra_moves=_collect_known_moves(reports),
+    )
 
     result: Dict[str, Any] = {
         "kid_name": kid_name,

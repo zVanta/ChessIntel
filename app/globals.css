@@ -6,6 +6,10 @@ html {
   -webkit-font-smoothing: antialiased;
 }
 
+::selection {
+  background: rgb(16 185 129 / 0.2);
+}
+
 body {
   @apply bg-slate-50 text-slate-900;
   background-image:
@@ -32,11 +36,11 @@ body {
   }
 
   .btn-primary {
-    @apply bg-emerald-600 text-white shadow-sm hover:bg-emerald-700;
+    @apply bg-emerald-600 text-white shadow-sm hover:-translate-y-px hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-600/25;
   }
 
   .btn-secondary {
-    @apply border border-slate-300 bg-white text-slate-700 shadow-sm hover:bg-slate-50;
+    @apply border border-slate-300 bg-white text-slate-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-50/60 hover:text-emerald-800;
   }
 
   .btn-dark {

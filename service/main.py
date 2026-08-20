@@ -148,7 +148,8 @@ def analyze_pgn(req: AnalyzePgnRequest) -> Dict[str, Any]:
         kid_color=kid_color,
     )
     markdown = chessintel_clone.generate_report(
-        req.kid_name, top_habit, 1, context=context
+        req.kid_name, top_habit, 1, context=context,
+        extra_moves=chessintel_clone._collect_known_moves([report]),
     )
 
     return {
