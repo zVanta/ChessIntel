@@ -55,6 +55,7 @@ function Board({
     const cg = Chessground(el, {
       fen,
       orientation,
+      turnColor: game.turn() === "w" ? "white" : "black",
       coordinates: true,
       highlight: { lastMove: true, check: true },
       animation: { enabled: true, duration: 150 },
@@ -70,7 +71,7 @@ function Board({
     return () => cg.destroy();
   }, [fen, orientation, lastMove]);
 
-  return <div ref={ref} className="aspect-square w-full" />;
+  return <div ref={ref} className="aspect-square w-full" style={{ touchAction: "none" }} />;
 }
 
 export default function RepertoireBuildPage({ params }: { params: { id: string } }) {

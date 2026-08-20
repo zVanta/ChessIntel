@@ -235,6 +235,7 @@ export default function PuzzlesPage() {
     const cg = Chessground(boardRef.current, {
       fen: puzzle.fen,
       orientation: turn(game),
+      turnColor: turn(game),
       coordinates: true,
       highlight: { lastMove: true, check: true },
       animation: { enabled: true, duration: 150 },

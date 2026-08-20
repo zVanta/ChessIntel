@@ -56,6 +56,7 @@ function PlayableBoard({
     const cg = Chessground(el, {
       fen,
       orientation,
+      turnColor: game.turn() === "w" ? "white" : "black",
       coordinates: true,
       highlight: { lastMove: true, check: true },
       animation: { enabled: true, duration: 120 },
@@ -70,7 +71,7 @@ function PlayableBoard({
     return () => cg.destroy();
   }, [fen, orientation]);
 
-  return <div ref={ref} className="aspect-square w-full max-w-sm" />;
+  return <div ref={ref} className="aspect-square w-full max-w-sm" style={{ touchAction: "none" }} />;
 }
 
 export default function TrainPage() {
