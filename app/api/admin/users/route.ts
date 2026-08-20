@@ -18,6 +18,9 @@ export async function GET() {
         `SELECT COUNT(*) AS n FROM reports r JOIN kids k ON k.id = r.kid_id WHERE k.user_id = ?`
       )
       .get(u.id) as { n: number };
+    const puzzles = db
+      .prepare(`SELECT COUNT(*) AS n FROM puzzle_completions WHERE user_id = ? AND solved = 1`)
+      .get(u.id) as { n: number };
     return {
       id: u.id,
       email: u.email,
@@ -26,6 +29,7 @@ export async function GET() {
       created_at: u.created_at,
       kids_count: kids.n,
       reports_count: reports.n,
+      puzzles_solved: puzzles.n,
       subscription_status: u.subscription_status,
     };
   });

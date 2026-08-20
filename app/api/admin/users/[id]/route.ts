@@ -27,8 +27,15 @@ export async function PATCH(
   }
   const input = (body ?? {}) as Record<string, unknown>;
 
-  if (typeof input.credits === "number") {
-    setUserCredits(userId, input.credits);
+  if (input.credits !== undefined) {
+    const credits = Number(input.credits);
+    if (!Number.isInteger(credits) || credits < 0 || credits > 1_000_000) {
+      return NextResponse.json(
+        { error: "Credits must be a whole number between 0 and 1,000,000." },
+        { status: 400 }
+      );
+    }
+    setUserCredits(userId, credits);
   }
   if (input.role === "admin" || input.role === "user") {
     // Never demote the last admin.
