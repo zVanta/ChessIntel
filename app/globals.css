@@ -11,6 +11,44 @@ body {
 }
 
 /* ------------------------------------------------------------------ */
+/* Shared UI primitives                                               */
+/* ------------------------------------------------------------------ */
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-slate-200 bg-white shadow-sm;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply bg-emerald-600 text-white hover:bg-emerald-700;
+  }
+
+  .btn-secondary {
+    @apply border border-slate-300 bg-white text-slate-700 hover:bg-slate-50;
+  }
+
+  .btn-dark {
+    @apply bg-slate-800 text-white hover:bg-slate-900;
+  }
+
+  .btn-danger {
+    @apply bg-red-600 text-white hover:bg-red-700;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-slate-700;
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Report document — a clean, print-friendly coaching report.          */
 /* Display font: EB Garamond. Body font: Source Sans 3.                */
 /* ------------------------------------------------------------------ */

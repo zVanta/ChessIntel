@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Chessground } from "@lichess-org/chessground";
 import { Chess } from "chess.js";
+import PageHeader from "@/components/PageHeader";
 import type { Kid, MistakeCard } from "@/lib/types";
 
 const norm = (s: string) => s.replace(/[+#]/g, "");
@@ -166,11 +167,10 @@ export default function TrainPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold text-slate-900">Train your mistakes</h1>
-      <p className="mt-1 max-w-2xl text-slate-600">
-        Cards return on a spaced schedule so a mistake stops repeating. Recall what went wrong —
-        or play the position and try to find the better move.
-      </p>
+      <PageHeader
+        title="Train your mistakes"
+        description="Cards return on a spaced schedule so a mistake stops repeating. Recall what went wrong — or play the position and try to find the better move."
+      />
 
       {kids.length > 0 && (
         <div className="max-w-xs">

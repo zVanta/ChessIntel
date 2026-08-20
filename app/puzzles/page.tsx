@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Chessground } from "@lichess-org/chessground";
 import { Chess } from "chess.js";
+import PageHeader from "@/components/PageHeader";
 
 type Cg = ReturnType<typeof Chessground>;
 
@@ -209,21 +210,19 @@ export default function PuzzlesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Daily puzzle</h1>
-          <p className="mt-1 max-w-2xl text-slate-600">
-            Solve the tactic. A wrong move gets a hint from the coach — no solution spoilers.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void loadPuzzle()}
-          className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          Reload
-        </button>
-      </div>
+      <PageHeader
+        title="Daily puzzle"
+        description="Solve the tactic. A wrong move gets a hint from the coach — no solution spoilers."
+        actions={
+          <button
+            type="button"
+            onClick={() => void loadPuzzle()}
+            className="btn btn-secondary"
+          >
+            Reload
+          </button>
+        }
+      />
 
       {status === "loading" && <div className="text-slate-500">Loading today&apos;s puzzle…</div>}
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import PageHeader from "@/components/PageHeader";
 import type { Kid, Repertoire } from "@/lib/types";
 
 export default function RepertoirePage() {
@@ -64,10 +65,10 @@ export default function RepertoirePage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold text-slate-900">Opening repertoires</h1>
-      <p className="max-w-2xl text-slate-600">
-        Record the lines you play and let Stockfish suggest the best replies at each step.
-      </p>
+      <PageHeader
+        title="Opening repertoires"
+        description="Record the lines you play and let Stockfish suggest the best replies at each step."
+      />
 
       {kids.length > 0 && (
         <div className="max-w-xs">

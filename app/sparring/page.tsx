@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Chessground } from "@lichess-org/chessground";
 import { Chess } from "chess.js";
+import PageHeader from "@/components/PageHeader";
 
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -160,14 +161,13 @@ export default function SparringPage() {
         : "black";
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-8">
-      <h1 className="text-2xl font-semibold text-slate-900">Sparring Partner</h1>
-      <p className="mt-1 text-sm text-slate-500">
-        Play against a human-like opponent set to roughly your rating. No neural model needed — the
-        engine softens its search to match the level.
-      </p>
+    <div className="space-y-6">
+      <PageHeader
+        title="Sparring partner"
+        description="Play against a human-like opponent set to roughly your rating. No neural model needed — the engine softens its search to match the level."
+      />
 
-      <div className="mt-6 flex flex-col gap-6 sm:flex-row">
+      <div className="flex flex-col gap-6 sm:flex-row">
         <div className="sm:w-2/3">
           <div className="overflow-hidden rounded-lg border border-slate-200 shadow-sm">
             <Board
@@ -223,6 +223,6 @@ export default function SparringPage() {
           </div>
         </div>
       </div>
-    </main>
+    </div>
   );
 }

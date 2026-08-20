@@ -102,7 +102,7 @@ export default function Sidebar({
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r border-slate-200 bg-white sm:flex">
       <div className="flex h-16 items-center gap-2.5 border-b border-slate-100 px-5">
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-emerald-600 text-base font-bold text-white">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-700 text-base font-bold text-white shadow-sm">
           ♞
         </span>
         <span className="truncate text-base font-bold text-slate-900">{siteName}</span>

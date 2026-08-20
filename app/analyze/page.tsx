@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import AnalyzeForm from "@/components/AnalyzeForm";
+import PageHeader from "@/components/PageHeader";
 
 export const metadata = { title: "Analyze" };
 
@@ -9,19 +10,15 @@ export default function AnalyzePage() {
   if (!user) redirect("/login?next=/analyze");
 
   return (
-    <div>
-      <h1 className="text-3xl font-bold text-slate-900">Get a game analyzed.</h1>
-      <p className="mt-2 max-w-2xl text-slate-600">
-        Send a game three ways — a scoresheet photo, pulled online games, or a pasted PGN — or
-        ask the coach a question, no game needed. Every move gets checked against a real engine,
-        and the report lands in your account.
-      </p>
+    <div className="space-y-6">
+      <PageHeader
+        title="Get a game analyzed"
+        description="Send a game three ways — a scoresheet photo, pulled online games, or a pasted PGN — or ask the coach a question, no game needed. Every move gets checked against a real engine, and the report lands in your account."
+      />
 
-      <div className="mt-6">
-        <AnalyzeForm />
-      </div>
+      <AnalyzeForm />
 
-      <div className="mt-10 rounded-xl border border-slate-200 bg-white p-6">
+      <div className="card p-6">
         <h2 className="text-lg font-semibold text-slate-900">What happens next</h2>
         <p className="mt-2 text-sm text-slate-600">
           Every move is read and checked against the actual game score. We find the turning
