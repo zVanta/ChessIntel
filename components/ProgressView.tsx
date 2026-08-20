@@ -109,7 +109,7 @@ export default function ProgressView({ kidId }: Props) {
           return (
             <div
               key={report.id}
-              className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+              className="card p-5"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>

@@ -44,32 +44,38 @@ export default function LoginForm() {
   }
 
   return (
-    <form onSubmit={submit} className="mx-auto max-w-sm space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-      <div>
-        <h2 className="text-lg font-semibold text-slate-900">
-          {mode === "login" ? "Log in" : "Create your account"}
+    <form
+      onSubmit={submit}
+      className="card mx-auto w-full max-w-sm space-y-4 p-6 sm:p-8"
+    >
+      <div className="text-center">
+        <span className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 text-2xl font-bold text-white shadow-sm">
+          ♞
+        </span>
+        <h2 className="mt-3 text-xl font-bold tracking-tight text-slate-900">
+          {mode === "login" ? "Welcome back, coach" : "Create your account"}
         </h2>
         <p className="mt-1 text-sm text-slate-500">
           {mode === "login"
-            ? "Welcome back, coach."
+            ? "Log in to see your players and reports."
             : "Start with one free report on us."}
         </p>
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
+        <label className="label">Email</label>
         <input
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
           autoComplete="email"
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          className="input"
         />
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700">Password</label>
+        <label className="label">Password</label>
         <input
           type="password"
           value={password}
@@ -77,17 +83,13 @@ export default function LoginForm() {
           required
           minLength={8}
           autoComplete={mode === "login" ? "current-password" : "new-password"}
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          className="input"
         />
       </div>
 
-      {error && <p className="rounded-md bg-red-50 p-2 text-sm text-red-700">{error}</p>}
+      {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
-      <button
-        type="submit"
-        disabled={busy}
-        className="w-full rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-      >
+      <button type="submit" disabled={busy} className="btn btn-primary w-full">
         {busy ? "Working…" : mode === "login" ? "Log in" : "Create account"}
       </button>
 
@@ -97,7 +99,7 @@ export default function LoginForm() {
           setMode(mode === "login" ? "register" : "login");
           setError(null);
         }}
-        className="w-full text-center text-sm text-emerald-700 underline"
+        className="w-full text-center text-sm font-medium text-emerald-700 hover:text-emerald-800"
       >
         {mode === "login" ? "New here? Create an account" : "Already have an account? Log in"}
       </button>

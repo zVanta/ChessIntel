@@ -55,7 +55,7 @@ export default function ReportsList({
       {reports.map((r) => (
         <div
           key={r.id}
-          className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+          className="card p-5"
         >
           <div className="flex items-start justify-between gap-3">
             <div>

@@ -136,6 +136,7 @@ export default function Sidebar({
                         }
                       />
                       {item.label}
+                      {active && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-500" />}
                     </Link>
                   </li>
                 );

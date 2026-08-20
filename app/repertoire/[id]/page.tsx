@@ -80,6 +80,10 @@ export default function RepertoireBuildPage({ params }: { params: { id: string }
   const [path, setPath] = useState<string[]>([]);
   const [pending, setPending] = useState<PendingMove | null>(null);
   const [suggestions, setSuggestions] = useState<{ uci: string; san: string; cp: number }[]>([]);
+  const [explorer, setExplorer] = useState<{
+    opening: string | null;
+    moves: { uci: string; san: string; total: number; white: number }[];
+  }>({ opening: null, moves: [] });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -126,6 +130,24 @@ export default function RepertoireBuildPage({ params }: { params: { id: string }
         setSuggestions(data.moves as { uci: string; san: string; cp: number }[]);
       } catch {
         // Engine unavailable — the panel just stays empty.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentFen]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setExplorer({ opening: null, moves: [] });
+    (async () => {
+      try {
+        const res = await fetch(`/api/opening-explorer?fen=${encodeURIComponent(currentFen)}`);
+        const data = await res.json();
+        if (!res.ok || cancelled) return;
+        setExplorer(data);
+      } catch {
+        // Explorer unavailable — the panel stays empty.
       }
     })();
     return () => {
@@ -290,6 +312,42 @@ export default function RepertoireBuildPage({ params }: { params: { id: string }
                     {s.san} <span className="text-slate-400">({(s.cp / 100).toFixed(1)})</span>
                   </button>
                 ))}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              Popular in the Lichess database
+            </h2>
+            {explorer.opening && <p className="mt-1 text-xs text-slate-400">{explorer.opening}</p>}
+            {explorer.moves.length === 0 ? (
+              <p className="mt-1 text-sm text-slate-400">No games reach this position yet.</p>
+            ) : (
+              <div className="mt-2 space-y-1.5">
+                {explorer.moves.map((m) => {
+                  const whitePct = m.total ? Math.round((m.white * 100) / m.total) : 0;
+                  return (
+                    <button
+                      key={m.uci}
+                      type="button"
+                      onClick={() => navigate(m.uci)}
+                      className="group flex w-full items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-left hover:border-emerald-400 hover:bg-emerald-50"
+                    >
+                      <span className="w-14 font-mono text-sm text-slate-800">{m.san}</span>
+                      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                        <span
+                          className="block h-full rounded-full bg-emerald-500"
+                          style={{ width: `${whitePct}%` }}
+                        />
+                      </span>
+                      <span className="w-10 text-right text-xs text-slate-500">{whitePct}%</span>
+                      <span className="w-16 text-right text-xs text-slate-400">
+                        {m.total.toLocaleString()} games
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>

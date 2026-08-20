@@ -38,55 +38,49 @@ export default function AddKidForm() {
   return (
     <form
       onSubmit={handleSubmit}
-      className="mx-auto max-w-md space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+      className="card mx-auto max-w-md space-y-4 p-6"
     >
       <h2 className="text-lg font-semibold text-slate-800">Add a player</h2>
 
       <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700">
-          First name (or nickname)
-        </label>
+        <label className="label">First name (or nickname)</label>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. Alex"
           required
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          className="input"
         />
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700">
-          chess.com username
-        </label>
+        <label className="label">chess.com username</label>
         <input
           value={chesscom}
           onChange={(e) => setChesscom(e.target.value)}
           placeholder="optional"
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          className="input"
         />
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700">
-          Lichess username
-        </label>
+        <label className="label">Lichess username</label>
         <input
           value={lichess}
           onChange={(e) => setLichess(e.target.value)}
           placeholder="optional"
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          className="input"
         />
       </div>
 
       {error && (
-        <p className="rounded-md bg-red-50 p-2 text-sm text-red-700">{error}</p>
+        <p className="rounded-lg bg-red-50 p-2 text-sm text-red-700">{error}</p>
       )}
 
       <button
         type="submit"
         disabled={loading}
-        className="w-full rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+        className="btn btn-primary w-full"
       >
         {loading ? "Saving…" : "Save player"}
       </button>

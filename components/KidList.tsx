@@ -122,62 +122,66 @@ export default function KidList() {
       {kids.map((kid) => {
         const platform = platforms[kid.id] || defaultPlatform(kid);
         return (
-          <div
-            key={kid.id}
-            className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-semibold text-slate-800">{kid.name}</h3>
-                <p className="text-sm text-slate-500">
-                  {kid.chesscom_username ? `chess.com: ${kid.chesscom_username}` : ""}
-                  {kid.chesscom_username && kid.lichess_username ? " · " : ""}
-                  {kid.lichess_username ? `Lichess: ${kid.lichess_username}` : ""}
-                </p>
-                <p className="mt-1 text-sm text-slate-500">
-                  {kid.reports_count === 0
-                    ? billingEnabled
-                      ? "No reports yet — the first one is free."
-                      : "No reports yet."
-                    : `Last report: ${kid.latest_report_at ?? "—"} · Tracking: ${kid.tracked_habit ?? "—"}`}
-                </p>
+          <div key={kid.id} className="card card-hover p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-gradient-to-br from-emerald-500 to-emerald-700 text-lg font-bold text-white">
+                  {(kid.name || "♞").trim().charAt(0).toUpperCase() || "♞"}
+                </span>
+                <div className="min-w-0">
+                  <h3 className="text-lg font-semibold text-slate-800">{kid.name}</h3>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {kid.chesscom_username && (
+                      <span className="chip">chess.com: {kid.chesscom_username}</span>
+                    )}
+                    {kid.lichess_username && (
+                      <span className="chip">Lichess: {kid.lichess_username}</span>
+                    )}
+                    {!kid.chesscom_username && !kid.lichess_username && (
+                      <span className="chip">No online account linked</span>
+                    )}
+                  </div>
+                  <p className="mt-2 text-sm text-slate-500">
+                    {kid.reports_count === 0
+                      ? billingEnabled
+                        ? "No reports yet — the first one is free."
+                        : "No reports yet."
+                      : `Last report: ${kid.latest_report_at ?? "—"} · Tracking: ${kid.tracked_habit ?? "—"}`}
+                  </p>
+                </div>
               </div>
 
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  {(kid.lichess_username || kid.chesscom_username) && (
-                    <select
-                      value={platform}
-                      onChange={(e) =>
-                        setPlatforms((p) => ({ ...p, [kid.id]: e.target.value }))
-                      }
-                      className="rounded-md border border-slate-300 px-2 py-1.5 text-xs"
-                    >
-                      {kid.lichess_username && <option value="lichess">Lichess</option>}
-                      {kid.chesscom_username && <option value="chesscom">chess.com</option>}
-                    </select>
-                  )}
-                  <button
-                    onClick={() => analyze(kid)}
-                    disabled={busyKid === kid.id}
-                    className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+              <div className="flex flex-wrap items-center gap-2">
+                {(kid.lichess_username || kid.chesscom_username) && (
+                  <select
+                    value={platform}
+                    onChange={(e) =>
+                      setPlatforms((p) => ({ ...p, [kid.id]: e.target.value }))
+                    }
+                    className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:border-emerald-500 focus:outline-none"
                   >
-                    {busyKid === kid.id ? "Working…" : "Run report"}
-                  </button>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Link
-                    href={`/progress?kid=${kid.id}`}
-                    className="rounded-md bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
-                  >
-                    Progress
-                  </Link>
-                </div>
+                    {kid.lichess_username && <option value="lichess">Lichess</option>}
+                    {kid.chesscom_username && <option value="chesscom">chess.com</option>}
+                  </select>
+                )}
+                <Link
+                  href={`/progress?kid=${kid.id}`}
+                  className="btn btn-secondary px-3 py-1.5 text-xs"
+                >
+                  Progress
+                </Link>
+                <button
+                  onClick={() => analyze(kid)}
+                  disabled={busyKid === kid.id}
+                  className="btn btn-primary px-3 py-1.5 text-xs"
+                >
+                  {busyKid === kid.id ? "Working…" : "Run report"}
+                </button>
               </div>
             </div>
 
             {actionError?.kidId === kid.id && (
-              <div className="mt-3 rounded-md bg-red-50 p-2 text-sm text-red-700">
+              <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
                 <p>{actionError.message}</p>
                 {actionError.outOfCredits && (
                   <Link
