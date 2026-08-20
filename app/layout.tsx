@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
-import LogoutButton from "@/components/LogoutButton";
 import MobileNav from "@/components/MobileNav";
+import Sidebar from "@/components/Sidebar";
 import { getSessionUser, isAdmin } from "@/lib/auth";
 import "./globals.css";
 import "@lichess-org/chessground/assets/chessground.base.css";
@@ -47,75 +47,56 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="min-h-screen">
-        <header className="relative border-b border-slate-200 bg-white">
-          <nav className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
-            <Link href={user ? "/dashboard" : "/"} className="text-lg font-bold text-slate-900">
-              {SITE_NAME}
-            </Link>
-            <div className="hidden items-center gap-4 text-sm font-medium text-slate-600 sm:flex">
-              {user ? (
-                <>
-                  <Link href="/analyze" className="hover:text-slate-900">
-                    Analyze
+        {user ? (
+          <div className="flex min-h-screen">
+            <Sidebar siteName={SITE_NAME} credits={user.credits} isAdmin={isAdminUser} />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <header className="sticky top-0 z-40 border-b border-slate-200 bg-white sm:hidden">
+                <div className="relative flex items-center justify-between px-4 py-3">
+                  <Link href="/dashboard" className="text-lg font-bold text-slate-900">
+                    {SITE_NAME}
                   </Link>
-                  <Link href="/dashboard" className="hover:text-slate-900">
-                    Dashboard
-                  </Link>
-                  <Link href="/reports" className="hover:text-slate-900">
-                    Reports
-                  </Link>
-                  <Link href="/progress" className="hover:text-slate-900">
-                    Progress
-                  </Link>
-                  <Link href="/train" className="hover:text-slate-900">
-                    Train
-                  </Link>
-                  <Link href="/puzzles" className="hover:text-slate-900">
-                    Puzzles
-                  </Link>
-                  <Link href="/repertoire" className="hover:text-slate-900">
-                    Repertoire
-                  </Link>
-                  <Link href="/sparring" className="hover:text-slate-900">
-                    Sparring
-                  </Link>
-                  <Link href="/profile" className="hover:text-slate-900">
-                    Profile
-                  </Link>
-                  {isAdmin(user) && (
-                    <Link href="/admin" className="font-semibold text-indigo-700 hover:text-indigo-900">
-                      Admin
-                    </Link>
-                  )}
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
-                    ⚡ {user.credits}
-                  </span>
-                  <LogoutButton />
-                </>
-              ) : (
+                  <MobileNav
+                    loggedIn
+                    isAdmin={isAdminUser}
+                    credits={user.credits}
+                    siteName={SITE_NAME}
+                  />
+                </div>
+              </header>
+              <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">{children}</main>
+              <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-400">
+                {SITE_NAME} · Built for parents of young chess players ·{" "}
+                <Link href="/privacy" className="underline">
+                  Privacy
+                </Link>
+              </footer>
+            </div>
+          </div>
+        ) : (
+          <>
+            <header className="relative border-b border-slate-200 bg-white">
+              <nav className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
+                <Link href="/" className="text-lg font-bold text-slate-900">
+                  {SITE_NAME}
+                </Link>
                 <Link
                   href="/login"
-                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-white hover:bg-emerald-700"
+                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700"
                 >
                   Log in
                 </Link>
-              )}
-            </div>
-            <MobileNav
-              loggedIn={Boolean(user)}
-              isAdmin={isAdminUser}
-              credits={user?.credits ?? 0}
-              siteName={SITE_NAME}
-            />
-          </nav>
-        </header>
-        <main className="mx-auto max-w-4xl px-4 py-8">{children}</main>
-        <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-400">
-          {SITE_NAME} · Built for parents of young chess players ·{" "}
-          <Link href="/privacy" className="underline">
-            Privacy
-          </Link>
-        </footer>
+              </nav>
+            </header>
+            <main className="mx-auto max-w-4xl px-4 py-8">{children}</main>
+            <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-400">
+              {SITE_NAME} · Built for parents of young chess players ·{" "}
+              <Link href="/privacy" className="underline">
+                Privacy
+              </Link>
+            </footer>
+          </>
+        )}
         <ServiceWorkerRegister />
       </body>
     </html>
