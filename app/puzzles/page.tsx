@@ -146,12 +146,15 @@ export default function PuzzlesPage() {
 
       const actual = `${orig}${dest}`;
       if (expected.slice(0, 4) !== actual) {
-        // Wrong: revert and explain.
-      cg.set({
-        fen: startFenRef.current,
-        turnColor: turn(game),
-        lastMove: undefined,
-      });
+        // Wrong: record it, revert the board, and explain.
+        lastWrongRef.current = actual;
+        setWrongCount((c) => c + 1);
+        cg.set({
+          fen: startFenRef.current,
+          turnColor: turn(game),
+          lastMove: undefined,
+          movable: { color: turn(game), dests: destsFrom(game), showDests: true },
+        });
         void requestExplanation(actual, false);
         return;
       }
@@ -232,8 +235,8 @@ export default function PuzzlesPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Daily puzzle"
-        description="Solve the tactic. A wrong move gets a hint from the coach — no solution spoilers."
+        title="Tactical puzzle"
+        description="A fresh tactic every time. A wrong move gets a hint from the coach — no solution spoilers."
         actions={
           <button
             type="button"
@@ -245,7 +248,7 @@ export default function PuzzlesPage() {
         }
       />
 
-      {status === "loading" && <div className="text-slate-500">Loading today&apos;s puzzle…</div>}
+      {status === "loading" && <div className="text-slate-500">Loading a puzzle…</div>}
 
       {status === "error" && (
         <div className="rounded-xl border border-slate-200 bg-white p-6 text-red-600">{explanation}</div>
@@ -314,7 +317,7 @@ export default function PuzzlesPage() {
       )}
 
       <p className="text-xs text-slate-400">
-        Puzzles are served by Lichess.{" "}
+        A new random tactic loads on every reload.{" "}
         <Link href="/train" className="text-emerald-700 underline">
           Train your own mistakes
         </Link>{" "}

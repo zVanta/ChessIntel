@@ -266,6 +266,19 @@ def daily_puzzle() -> Dict[str, Any]:
         return _chesscom_daily_puzzle()
 
 
+@app.get("/random-puzzle")
+def random_puzzle() -> Dict[str, Any]:
+    """A fresh random puzzle every call.
+
+    chess.com's /puzzle/random first (variety on every reload), falling back to
+    the Lichess daily puzzle when chess.com is unreachable.
+    """
+    try:
+        return _chesscom_random_puzzle()
+    except Exception:
+        return _lichess_daily_puzzle()
+
+
 def _lichess_daily_puzzle() -> Dict[str, Any]:
     import requests as _requests
 
@@ -309,12 +322,12 @@ def _lichess_daily_puzzle() -> Dict[str, Any]:
     }
 
 
-def _chesscom_daily_puzzle() -> Dict[str, Any]:
+def _chesscom_puzzle(url: str) -> Dict[str, Any]:
     import requests as _requests
 
     try:
         resp = _requests.get(
-            "https://api.chess.com/pub/puzzle",
+            url,
             headers={"User-Agent": chessintel_clone.USER_AGENT},
             timeout=8,
         )
@@ -339,13 +352,21 @@ def _chesscom_daily_puzzle() -> Dict[str, Any]:
         raise HTTPException(status_code=502, detail="Unexpected chess.com puzzle payload")
 
     return {
-        "id": "chesscom-" + str(data.get("publish_time") or "daily"),
+        "id": "chesscom-" + str(data.get("publish_time") or data.get("url") or ""),
         "rating": 0,
-        "themes": [data.get("title") or "daily"],
+        "themes": [data.get("title") or "tactics"],
         "fen": fen,
         "solution": solution,
         "plays": 0,
     }
+
+
+def _chesscom_daily_puzzle() -> Dict[str, Any]:
+    return _chesscom_puzzle("https://api.chess.com/pub/puzzle")
+
+
+def _chesscom_random_puzzle() -> Dict[str, Any]:
+    return _chesscom_puzzle("https://api.chess.com/pub/puzzle/random")
 
 
 @app.post("/spar")

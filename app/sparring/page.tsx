@@ -46,13 +46,18 @@ function Board({
     const el = ref.current;
     if (!el) return;
     const game = new Chess(fen);
+    // chessground does not derive the side to move from the FEN — it must be
+    // set explicitly, otherwise it stays "white" and Black's pieces never move.
+    const turnColor = game.turn() === "w" ? "white" : "black";
     const cg = Chessground(el, {
       fen,
       orientation,
+      turnColor,
       coordinates: true,
       highlight: { lastMove: true, check: true },
       animation: { enabled: true, duration: 150 },
       lastMove: lastMove as any,
+      draggable: { enabled: true, showGhost: true },
       movable: {
         color: movableColor,
         free: false,
@@ -64,7 +69,9 @@ function Board({
     return () => cg.destroy();
   }, [fen, orientation, lastMove, movableColor]);
 
-  return <div ref={ref} className="aspect-square w-full" />;
+  return (
+    <div ref={ref} className="aspect-square w-full" style={{ touchAction: "none" }} />
+  );
 }
 
 export default function SparringPage() {

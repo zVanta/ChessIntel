@@ -175,33 +175,54 @@ def _cp_loss(score_before: int, score_after: int) -> int:
 _PIECE_VALUES = {"p": 1, "n": 3, "b": 3, "r": 5, "q": 9, "k": 0}
 
 
-def _hanging_squares(board: chess.Board) -> List[chess.Square]:
-    """Squares where the side that just moved has an en-prise piece.
+def _see(board: chess.Board, square: chess.Square, side: chess.Color) -> int:
+    """Static exchange evaluation of capturing on ``square``.
 
-    A piece is en prise when an enemy piece attacks it and either it is
-    undefended, outnumbered, or the cheapest attacker is worth less than the
-    piece — so capturing it wins material even after any recapture (e.g. a
-    bishop taking a defended queen). Kings are excluded.
+    Returns the material gain (in pawns) for ``side`` of playing the capture
+    on ``square``, each side recapturing with its least-valuable piece and
+    free to stop the exchange at any point. Positive means the capture wins
+    material; zero or negative means it does not. Kings are excluded — a king
+    recapturing a defended piece is illegal anyway.
+    """
+    piece = board.piece_at(square)
+    if piece is None:
+        return 0
+    victim_value = _FORK_TARGET_VALUE.get(piece.piece_type, 0)
+    b = board.copy()
+    attackers = [
+        s for s in b.attackers(side, square)
+        if b.piece_at(s).piece_type != chess.KING
+    ]
+    if not attackers:
+        return 0
+    att_sq = min(
+        attackers,
+        key=lambda s: _FORK_TARGET_VALUE.get(b.piece_at(s).piece_type, 0),
+    )
+    attacker = b.piece_at(att_sq)
+    b.remove_piece_at(att_sq)
+    b.remove_piece_at(square)
+    b.set_piece_at(square, attacker)
+    return max(0, victim_value - _see(b, square, not side))
+
+
+def _hanging_squares(board: chess.Board) -> List[chess.Square]:
+    """Squares where the side that just moved left a piece en prise.
+
+    A piece is en prise only when the opponent can capture it and come out
+    ahead through the recapture sequence — i.e. it is genuinely loseable. A
+    static-exchange evaluation decides this; the old attacker/defender count
+    misread a rook-and-king "attacking" a pawn-defended knight as a hanging
+    piece even though the pawn recaptures the rook. Kings are excluded.
     """
     mover = not board.turn
     hanging: List[chess.Square] = []
     for square, piece in board.piece_map().items():
         if piece.color != mover or piece.piece_type == chess.KING:
             continue
-        attackers = board.attackers(not mover, square)
-        if not attackers:
+        if not board.is_attacked_by(board.turn, square):
             continue
-        defenders = board.attackers(mover, square)
-        piece_value = _FORK_TARGET_VALUE.get(piece.piece_type, 0)
-        cheapest_attacker = min(
-            _FORK_TARGET_VALUE.get(board.piece_at(s).piece_type, 0)
-            for s in attackers
-        )
-        if (
-            not defenders
-            or len(defenders) < len(attackers)
-            or cheapest_attacker < piece_value
-        ):
+        if _see(board, square, board.turn) > 0:
             hanging.append(square)
     return hanging
 
@@ -781,6 +802,15 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
     phase_blunders = {"opening": 0, "middlegame": 0, "endgame": 0}
     for b in blunders:
         phase_blunders[b["phase"]] += 1
+
+    # A PGN pasted without a Result header still ends in a checkmate the engine
+    # walk just replayed. Infer the outcome from the final position so the
+    # report never says "result unknown" for a game that ended in mate.
+    if not result or result in ("?", "*", ""):
+        if board.is_checkmate():
+            result = "0-1" if board.turn == chess.WHITE else "1-0"
+        elif board.is_stalemate() or board.is_insufficient_material():
+            result = "1/2-1/2"
 
     return {
         "source": (game or {}).get("source"),

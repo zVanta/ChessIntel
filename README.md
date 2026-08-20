@@ -51,7 +51,7 @@ no third-party branding or content. (The internal analysis module is named
 - **Clock & reflex detection** — per-move clocks flag mistakes played in under
   three seconds, so "rushed" is diagnosed separately from "didn't know".
 - **Practice suite** — mistake cards with spaced repetition (Woodpecker-style)
-  and a "try the fix" board; Lichess daily puzzles with coach hints; an opening
+  and a "try the fix" board; random tactical puzzles with coach hints; an opening
   repertoire builder (Stockfish multi-PV + the Lichess opening explorer); and
   an Elo-scaled sparring partner.
 - **Kid profiles** — age, USCF/FIDE/online ratings, focus notes, and linked
@@ -258,7 +258,7 @@ npm run test:all   # pytest -q && vitest run
 │   │   ├── progress/[kidId]/ # drill follow-up history
 │   │   ├── reports/          # list + [id] delete (ownership-scoped)
 │   │   ├── train/            # mistake cards (GET due + POST review)
-│   │   ├── puzzles/  puzzles/explain/  # Lichess daily puzzle + hints
+│   │   ├── puzzles/  puzzles/explain/  # random tactical puzzle + hints
 │   │   ├── repertoires/      # repertoire CRUD + suggest + moves
 │   │   ├── spar/             # Elo-scaled sparring move
 │   │   ├── opening-explorer/ # Lichess opening database
@@ -285,7 +285,7 @@ npm run test:all   # pytest -q && vitest run
 │   ├── db.ts                 # SQLite schema + typed helpers (migrates on boot)
 │   ├── persist.ts            # report persistence + memory loop
 │   ├── python.ts             # FastAPI client
-│   ├── lichess.ts            # Lichess opening explorer + daily puzzle
+│   ├── lichess.ts            # Lichess opening explorer
 │   ├── auth.ts  password.ts  # sessions + scrypt hashing
 │   ├── credits.ts  rateLimit.ts
 │   ├── billing.ts  stripe.ts # funding gate + Stripe helpers

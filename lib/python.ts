@@ -143,24 +143,24 @@ export interface DailyPuzzle {
   plays: number;
 }
 
-/** Today's Lichess puzzle, proxied through the Python service. */
-export async function dailyPuzzle(): Promise<DailyPuzzle> {
+/** A fresh random puzzle, proxied through the Python service. */
+export async function randomPuzzle(): Promise<DailyPuzzle> {
   let res: Response;
   try {
-    res = await fetch(`${SERVICE_URL}/daily-puzzle`, {
+    res = await fetch(`${SERVICE_URL}/random-puzzle`, {
       cache: "no-store",
       signal: AbortSignal.timeout(30_000),
     });
   } catch (err) {
     throw new PythonServiceError(
-      `Could not reach the Python service for /daily-puzzle (${err instanceof Error ? err.message : "network error"})`,
+      `Could not reach the Python service for /random-puzzle (${err instanceof Error ? err.message : "network error"})`,
       502
     );
   }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new PythonServiceError(
-      `Python service /daily-puzzle failed (${res.status}): ${text.slice(0, 300)}`,
+      `Python service /random-puzzle failed (${res.status}): ${text.slice(0, 300)}`,
       res.status
     );
   }

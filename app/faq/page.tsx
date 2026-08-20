@@ -26,7 +26,7 @@ const FAQS = [
   },
   {
     q: "Where do the puzzles come from?",
-    a: "The daily puzzle is from Lichess. You can also practice your own mistakes on the Train page with the “Try the fix” board.",
+    a: "Puzzles come from chess.com's random puzzle feed (the Lichess daily is the fallback). You can also practice your own mistakes on the Train page with the “Try the fix” board.",
   },
   {
     q: "What does the opening repertoire builder do?",

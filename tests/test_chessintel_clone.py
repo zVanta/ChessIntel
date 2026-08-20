@@ -191,6 +191,14 @@ def test_analyze_game_reads_players_and_result_from_pgn_headers():
     assert report["result"] == "1-0"
 
 
+def test_analyze_game_infers_result_from_final_checkmate():
+    # A headerless PGN that ends in mate must read the real result — not
+    # "unknown" — so the writer never says "result unknown" or invents a loss.
+    pgn = "1. f3 e5 2. g4 Qh4# *"
+    report = cc.analyze_game({"pgn": pgn, "source": "test", "external_id": "1"}, FakeEngine(), depth=1)
+    assert report["result"] == "0-1"
+
+
 def test_analyze_game_splits_class_counts_by_color():
     pgn = '[Event "T"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 *'
     report = cc.analyze_game({"pgn": pgn, "source": "test", "external_id": "1"}, FakeEngine(), depth=1)
@@ -481,6 +489,17 @@ def test_hanging_squares_flags_cheaper_attacker_on_queen():
     board = chess.Board("3qk3/8/2n5/6B1/8/8/8/4K3 w - - 0 1")
     names = [chess.square_name(s) for s in cc._hanging_squares(board)]
     assert "d8" in names
+
+
+def test_hanging_squares_does_not_flag_pawn_defended_knight():
+    # Real position after 43.Ne6 in the report that claimed "left a knight on
+    # e6 hanging": the knight is attacked by the rook (f6) and king (e7) but
+    # defended by the d5 pawn — Rxe6 dxe6 wins the rook for the knight, so the
+    # capture is bad and the knight is NOT en prise. The old attacker/defender
+    # count (1 defender < 2 attackers) misread it as hanging.
+    board = chess.Board("8/4k3/1p2Nr2/pB1P2p1/P3P2p/1PR2P1P/3K2P1/1R6 b - - 2 43")
+    names = [chess.square_name(s) for s in cc._hanging_squares(board)]
+    assert "e6" not in names
 
 
 def test_threat_detail_queen_en_prise_beats_non_royal_fork():
