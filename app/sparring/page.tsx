@@ -79,15 +79,6 @@ export default function SparringPage() {
 
   const kidChar = kidColor === "white" ? "w" : "b";
 
-  const newGame = useCallback((color: "white" | "black") => {
-    gameRef.current = new Chess();
-    setKidColor(color);
-    setFen(START_FEN);
-    setLastMove(undefined);
-    setSans([]);
-    setStatus(color === "white" ? "Your move — play as White." : "Thinking…");
-  }, []);
-
   const engineMove = useCallback(
     async (game: Chess, color: "white" | "black", currentElo: number) => {
       setThinking(true);
@@ -111,7 +102,7 @@ export default function SparringPage() {
         if (game.isGameOver()) {
           setStatus(game.isCheckmate() ? "Checkmate!" : "Game over.");
         } else {
-          setStatus(color === "white" ? "Your move." : "Your move.");
+          setStatus("Your move.");
         }
       } catch (err) {
         setStatus(err instanceof Error ? err.message : "The engine is unreachable right now.");
@@ -122,12 +113,27 @@ export default function SparringPage() {
     []
   );
 
-  // When the kid plays Black, the engine opens with White.
-  useEffect(() => {
-    if (kidColor === "black" && fen === START_FEN && !thinking) {
-      engineMove(gameRef.current, "black", elo);
-    }
-  }, [kidColor, fen, thinking, elo, engineMove]);
+  const newGame = useCallback(
+    async (color: "white" | "black") => {
+      const game = new Chess();
+      gameRef.current = game;
+      setKidColor(color);
+      setFen(START_FEN);
+      setLastMove(undefined);
+      setSans([]);
+      if (color === "white") {
+        setStatus("Your move — play as White.");
+        return;
+      }
+      // The kid plays Black, so the engine opens with White.
+      setStatus("Thinking…");
+      await engineMove(game, "black", elo);
+    },
+    [elo, engineMove]
+  );
+
+  // The engine's opening move for Black is triggered directly in newGame(), so
+  // no effect is needed here.
 
   const onMove = useCallback(
     async (orig: string, dest: string) => {
