@@ -2,6 +2,7 @@
   "name": "checkmate-coach",
   "version": "1.0.0",
   "private": true,
+  "license": "UNLICENSED",
   "description": "Automated coach reports for junior chess players (original product, no ChessIntel branding).",
   "scripts": {
     "dev": "next dev",

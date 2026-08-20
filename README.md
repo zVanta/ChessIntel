@@ -303,7 +303,7 @@ npm run test:all   # pytest -q && vitest run
 ├── requirements.txt          # pinned Python deps
 ├── package.json              # pinned JS deps
 ├── .env.example
-├── PRIVACY.md  DEPLOY.md  ANDROID.md
+├── PRIVACY.md  TERMS.md  DEPLOY.md  ANDROID.md
 └── README.md
 ```
 
@@ -315,4 +315,9 @@ per-player opt-in by a parent/guardian, and no email to minors. See
 
 ## License
 
-The project's own code is **MIT** — see `LICENSE`.
+The project's own code is **proprietary** (all rights reserved) — see
+`LICENSE`. Third-party open-source components (Stockfish, chessground,
+python-chess, Next.js, React, etc.) remain under their own licenses; the
+analysis pipeline in `chessintel_clone.py` is this project's closed-source
+trade secret and is not licensed under the GPL. See `TERMS.md` for the Terms
+of Service.
