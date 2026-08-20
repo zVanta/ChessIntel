@@ -134,39 +134,6 @@ export async function suggestRepertoireMoves(
   });
 }
 
-export interface DailyPuzzle {
-  id: string;
-  rating: number;
-  themes: string[];
-  fen: string;
-  solution: string[];
-  plays: number;
-}
-
-/** Today's Lichess puzzle (fetched + FEN-derived by the Python service). */
-export async function dailyPuzzle(): Promise<DailyPuzzle> {
-  let res: Response;
-  try {
-    res = await fetch(`${SERVICE_URL}/daily-puzzle`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(30_000),
-    });
-  } catch (err) {
-    throw new PythonServiceError(
-      `Could not reach the Python service for /daily-puzzle (${err instanceof Error ? err.message : "network error"})`,
-      502
-    );
-  }
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new PythonServiceError(
-      `Python service /daily-puzzle failed (${res.status}): ${text.slice(0, 300)}`,
-      res.status
-    );
-  }
-  return (await res.json()) as DailyPuzzle;
-}
-
 /** One move from the human-like sparring partner at roughly this Elo. */
 export async function sparMove(
   fen: string,

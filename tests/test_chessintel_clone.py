@@ -213,30 +213,6 @@ def test_parse_clock_seconds():
     assert cc._parse_clock_seconds("just a comment") is None
 
 
-def test_puzzle_fen_replays_pgn_to_initial_ply():
-    # After 1. e4 e5 the position is White to move at the start of move 2.
-    pgn = '[Event "?"]\n\n1. e4 e5 2. Nf3 *'
-    fen = cc._puzzle_fen(pgn, 2)
-    board = chess.Board(fen)
-    assert board.fullmove_number == 2
-    assert board.turn == chess.WHITE
-    assert board.piece_at(chess.parse_square("e4")) is not None
-    assert board.piece_at(chess.parse_square("e5")) is not None
-
-
-def test_puzzle_fen_respects_fen_header():
-    pgn = '[FEN "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"]\n\n1. e4 *'
-    fen = cc._puzzle_fen(pgn, 1)
-    board = chess.Board(fen)
-    assert board.piece_at(chess.parse_square("e4")) is not None
-    assert board.piece_at(chess.parse_square("e2")) is None
-
-
-def test_puzzle_fen_none_on_bad_input():
-    assert cc._puzzle_fen("", 0) is None
-    assert cc._puzzle_fen("not a pgn", 0) is None
-
-
 def test_analyze_game_captures_clock_and_after_capture():
     pgn = ('[Event "T"]\n[White "Alice"]\n[Black "Bob"]\n\n'
            '1. e4 {5s} e5 {3s} 2. Nf3 {1s} Nc6 {4s} 3. d4 {10s} exd4 {2s} 4. Nxd4 {8s} *')

@@ -22,19 +22,19 @@ vi.mock("../../lib/auth", () => ({
   isAdmin: () => false,
 }));
 
-vi.mock("../../lib/python", () => ({
+vi.mock("../../lib/lichess", () => ({
   dailyPuzzle: vi.fn(),
 }));
 
 import { GET } from "../../app/api/puzzles/route";
-import { dailyPuzzle } from "../../lib/python";
+import { dailyPuzzle } from "../../lib/lichess";
 
 beforeEach(() => {
   vi.mocked(dailyPuzzle).mockReset();
 });
 
 describe("GET /api/puzzles", () => {
-  it("passes the service puzzle through to the client", async () => {
+  it("passes the daily puzzle through to the client", async () => {
     vi.mocked(dailyPuzzle).mockResolvedValue({
       id: "p1",
       rating: 1700,
@@ -56,8 +56,8 @@ describe("GET /api/puzzles", () => {
     });
   });
 
-  it("returns 502 when the service fails", async () => {
-    vi.mocked(dailyPuzzle).mockRejectedValue(new Error("Lichess puzzle service unavailable."));
+  it("returns 502 when the puzzle fetch fails", async () => {
+    vi.mocked(dailyPuzzle).mockRejectedValue(new Error("Lichess puzzle service unavailable (500)"));
 
     const res = await GET();
     expect(res.status).toBe(502);

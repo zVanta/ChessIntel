@@ -70,8 +70,13 @@ export default function PuzzlesPage() {
     setWrongCount(0);
     try {
       const res = await fetch("/api/puzzles", { cache: "no-store" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to load the puzzle.");
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || !data.fen) {
+        throw new Error(
+          (data && (data as { error?: string }).error) ||
+            "The puzzle service returned an unexpected response. Try again in a moment."
+        );
+      }
       setPuzzle(data as Puzzle);
     } catch (err) {
       setStatus("error");
