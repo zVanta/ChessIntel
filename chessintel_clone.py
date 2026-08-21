@@ -520,14 +520,78 @@ def _reply_mate(board_after: chess.Board,
     return san if board.is_checkmate() else None
 
 
+def _is_back_rank_mate(board_after: chess.Board,
+                       reply: Optional[chess.Move]) -> bool:
+    """True when ``reply`` delivers a back-rank mate: the mated king is on
+    rank 1 or 8 and the mating piece is a rook or queen on that same rank."""
+    if reply is None:
+        return False
+    board = board_after.copy()
+    try:
+        board.push(reply)
+    except Exception:
+        return False
+    if not board.is_checkmate():
+        return False
+    mated = board.turn  # after the reply, board.turn is the side in checkmate
+    king_sq = board.king(mated)
+    if king_sq is None:
+        return False
+    rank = chess.square_rank(king_sq)
+    if rank not in (0, 7):
+        return False
+    mat = board.piece_at(reply.to_square)
+    if mat is None or mat.piece_type not in (chess.ROOK, chess.QUEEN):
+        return False
+    return chess.square_rank(reply.to_square) == rank
+
+
+def _trapped_pieces(board: chess.Board) -> List[chess.Square]:
+    """Squares of the side that just moved whose piece is trapped: it is
+    genuinely en prise (not defended) and has no safe escape — every legal move
+    still leaves it capturable, or it cannot move at all. Pawns and kings are
+    excluded (a "trapped pawn" is not a meaningful motif)."""
+    mover = not board.turn
+    mover_board = board.copy()
+    mover_board.turn = mover  # legal_moves must be the MOVER's moves
+    trapped: List[chess.Square] = []
+    for square, piece in board.piece_map().items():
+        if piece.color != mover or piece.piece_type in (chess.KING, chess.PAWN):
+            continue
+        if _see(board, square, board.turn) <= 0:
+            continue  # defended where it stands — not trapped, not even en prise
+        moves = [m for m in mover_board.legal_moves if m.from_square == square]
+        if not moves:
+            trapped.append(square)
+            continue
+        safe = False
+        for m in moves:
+            b2 = mover_board.copy()
+            b2.push(m)
+            if b2.piece_at(m.to_square) is None:
+                continue
+            if _see(b2, m.to_square, b2.turn) <= 0:
+                safe = True
+                break
+        if not safe:
+            trapped.append(square)
+    return trapped
+
+
+def _trapped_phrase(board: chess.Board, square: chess.Square) -> str:
+    piece = board.piece_at(square)
+    name = chess.piece_name(piece.piece_type) if piece else "piece"
+    return f"trapped the {name} on {chess.square_name(square)} with no safe escape"
+
+
 def _blunder_threat(board_after: chess.Board,
                     reply: Optional[chess.Move] = None) -> Optional[str]:
     """Classify the immediate tactical damage of a just-played move.
 
     Returns a short label ("walked into mate", "walked into a fork",
-    "walked into a pin", "walked into a skewer", "hung a piece") or None.
-    Mate and fork are claimed only from the opponent's engine-best reply; pin
-    and skewer are claimed from the static board geometry.
+    "walked into a pin", "walked into a skewer", "trapped a piece",
+    "hung a piece") or None. Mate and fork are claimed only from the
+    opponent's engine-best reply; pin, skewer, trap and hang are static.
     """
     board = board_after.copy()
     if _reply_mate(board, reply) is not None:
@@ -538,6 +602,8 @@ def _blunder_threat(board_after: chess.Board,
         return "walked into a pin"
     if _skewered_pieces(board):
         return "walked into a skewer"
+    if _trapped_pieces(board):
+        return "trapped a piece"
     if _hanging_squares(board):
         return "hung a piece"
     return None
@@ -549,11 +615,13 @@ def _threat_detail(board_after: chess.Board,
 
     Used by the report so the LLM never has to read a raw FEN and hallucinate
     piece positions. Mate and fork are reported only from the opponent's actual
-    best reply; otherwise a genuine pin, skewer, then a hung piece, is named.
+    best reply; otherwise a pin, skewer, trap, then a hung piece, is named.
     """
     board = board_after.copy()
     mate = _reply_mate(board, reply)
     if mate:
+        if _is_back_rank_mate(board, reply):
+            return f"allowed a back-rank mate ({mate})"
         return f"allowed checkmate ({mate})"
     fork = _fork_after_move(board, reply)
     if fork:
@@ -564,6 +632,9 @@ def _threat_detail(board_after: chess.Board,
     skewered = _skewered_pieces(board)
     if skewered:
         return _skewer_phrase(board, skewered[0])
+    trapped = _trapped_pieces(board)
+    if trapped:
+        return _trapped_phrase(board, trapped[0])
     hung = _hanging_squares(board)
     if hung:
         square = hung[0]
@@ -1052,6 +1123,8 @@ def _tag_blunders(blunders: List[Dict[str, Any]]) -> List[str]:
             tags.append("Skewer awareness")
         elif threat == "walked into mate":
             tags.append("Mate awareness")
+        elif threat == "trapped a piece":
+            tags.append("Trapped pieces")
     # De-duplicate while preserving frequency order for aggregation.
     seen = set()
     result = []

@@ -595,7 +595,15 @@ def test_blunder_threat_detects_mate():
     # White's engine-best reply Ra8 is back-rank mate against the black king.
     board = chess.Board("6k1/5ppp/8/8/8/8/8/R6K w - - 0 1")
     assert cc._blunder_threat(board, chess.Move.from_uci("a1a8")) == "walked into mate"
-    assert cc._threat_detail(board, chess.Move.from_uci("a1a8")) == "allowed checkmate (Ra8#)"
+    assert cc._threat_detail(board, chess.Move.from_uci("a1a8")) == "allowed a back-rank mate (Ra8#)"
+
+
+def test_blunder_threat_detects_trapped_piece():
+    # White's bishop on a1 is attacked by the black knight on b3 and cannot
+    # move (b2 pawn blocks its only diagonal) — trapped, not merely hanging.
+    board = chess.Board("7k/8/8/8/8/1n6/1P6/B6K b - - 0 1")
+    assert cc._blunder_threat(board) == "trapped a piece"
+    assert cc._threat_detail(board) == "trapped the bishop on a1 with no safe escape"
 
 
 def test_threat_detail_names_hanging_piece():
