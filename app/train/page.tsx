@@ -82,6 +82,7 @@ export default function TrainPage() {
   const [mode, setMode] = useState<"recall" | "play">("recall");
   const [wrongAttempts, setWrongAttempts] = useState(0);
   const [playMessage, setPlayMessage] = useState<string | null>(null);
+  const [playBoardKey, setPlayBoardKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -162,7 +163,8 @@ export default function TrainPage() {
       void review(true);
     } else {
       setWrongAttempts((n) => n + 1);
-      setPlayMessage("Not quite — that isn't the engine's pick. Try again.");
+      setPlayMessage("Not quite — that isn't the engine's pick.");
+      setPlayBoardKey((k) => k + 1); // remount the board so the player can try again
     }
   }
 
@@ -202,7 +204,12 @@ export default function TrainPage() {
         <div className="grid gap-6 md:grid-cols-[minmax(0,360px)_1fr]">
           <div className="rounded-xl border border-slate-200 bg-white p-4">
             {mode === "play" ? (
-              <PlayableBoard fen={card.fen} orientation={card.color} onMove={handlePlayMove} />
+              <PlayableBoard
+                key={playBoardKey}
+                fen={card.fen}
+                orientation={card.color}
+                onMove={handlePlayMove}
+              />
             ) : (
               <StaticBoard fen={card.fen} orientation={card.color} />
             )}
@@ -247,6 +254,18 @@ export default function TrainPage() {
                   {playMessage && (
                     <p className="rounded-md bg-slate-50 px-3 py-2 text-slate-700">{playMessage}</p>
                   )}
+                  {wrongAttempts > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPlayMessage(null);
+                        setPlayBoardKey((k) => k + 1);
+                      }}
+                      className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                    >
+                      Try again
+                    </button>
+                  )}
                   {wrongAttempts >= 2 && (
                     <p className="text-slate-500">
                       Hint: it would have kept the position safe.{" "}
@@ -279,6 +298,7 @@ export default function TrainPage() {
                           setMode("play");
                           setPlayMessage(null);
                           setWrongAttempts(0);
+                          setPlayBoardKey((k) => k + 1);
                         }}
                         className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
                       >
