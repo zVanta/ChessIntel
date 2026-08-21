@@ -216,7 +216,8 @@ def _see(board: chess.Board, square: chess.Square, side: chess.Color) -> int:
     return max(0, victim_value - _see(b, square, not side))
 
 
-def _hanging_squares(board: chess.Board) -> List[chess.Square]:
+def _hanging_squares(board: chess.Board,
+                     color: Optional[bool] = None) -> List[chess.Square]:
     """Squares where the side that just moved left a piece en prise.
 
     A piece is en prise only when the opponent can capture it and come out
@@ -225,14 +226,15 @@ def _hanging_squares(board: chess.Board) -> List[chess.Square]:
     misread a rook-and-king "attacking" a pawn-defended knight as a hanging
     piece even though the pawn recaptures the rook. Kings are excluded.
     """
-    mover = not board.turn
+    mover = color if color is not None else (not board.turn)
+    enemy = not mover
     hanging: List[chess.Square] = []
     for square, piece in board.piece_map().items():
         if piece.color != mover or piece.piece_type == chess.KING:
             continue
-        if not board.is_attacked_by(board.turn, square):
+        if not board.is_attacked_by(enemy, square):
             continue
-        if _see(board, square, board.turn) > 0:
+        if _see(board, square, enemy) > 0:
             hanging.append(square)
     return hanging
 
@@ -416,9 +418,11 @@ def _pin_info(board: chess.Board, square: chess.Square) -> Optional[Dict[str, An
     return None
 
 
-def _pinned_pieces(board: chess.Board) -> List[chess.Square]:
-    """Squares of the side that just moved whose piece is genuinely pinned."""
-    mover = not board.turn
+def _pinned_pieces(board: chess.Board,
+                   color: Optional[bool] = None) -> List[chess.Square]:
+    """Squares of the given side (default: side that just moved) whose piece
+    is genuinely pinned."""
+    mover = color if color is not None else (not board.turn)
     return [
         sq for sq, p in board.piece_map().items()
         if p.color == mover and p.piece_type != chess.KING and _pin_info(board, sq)
@@ -490,9 +494,11 @@ def _skewer_info(board: chess.Board, square: chess.Square) -> Optional[Dict[str,
     return None
 
 
-def _skewered_pieces(board: chess.Board) -> List[chess.Square]:
-    """Squares of the side that just moved whose piece is genuinely skewered."""
-    mover = not board.turn
+def _skewered_pieces(board: chess.Board,
+                     color: Optional[bool] = None) -> List[chess.Square]:
+    """Squares of the given side (default: side that just moved) whose piece
+    is genuinely skewered."""
+    mover = color if color is not None else (not board.turn)
     return [
         sq for sq, p in board.piece_map().items()
         if p.color == mover and p.piece_type != chess.KING and _skewer_info(board, sq)
@@ -552,19 +558,20 @@ def _is_back_rank_mate(board_after: chess.Board,
     return chess.square_rank(reply.to_square) == rank
 
 
-def _trapped_pieces(board: chess.Board) -> List[chess.Square]:
-    """Squares of the side that just moved whose piece is trapped: it is
-    genuinely en prise (not defended) and has no safe escape — every legal move
-    still leaves it capturable, or it cannot move at all. Pawns and kings are
-    excluded (a "trapped pawn" is not a meaningful motif)."""
-    mover = not board.turn
+def _trapped_pieces(board: chess.Board,
+                    color: Optional[bool] = None) -> List[chess.Square]:
+    """Squares of the given side (default: side that just moved) whose piece
+    is trapped: it is genuinely en prise (not defended) and has no safe escape
+    — every legal move still leaves it capturable, or it cannot move at all.
+    Pawns and kings are excluded (a "trapped pawn" is not a meaningful motif)."""
+    mover = color if color is not None else (not board.turn)
     mover_board = board.copy()
     mover_board.turn = mover  # legal_moves must be the MOVER's moves
     trapped: List[chess.Square] = []
     for square, piece in board.piece_map().items():
         if piece.color != mover or piece.piece_type in (chess.KING, chess.PAWN):
             continue
-        if _see(board, square, board.turn) <= 0:
+        if _see(board, square, not mover) <= 0:
             continue  # defended where it stands — not trapped, not even en prise
         moves = [m for m in mover_board.legal_moves if m.from_square == square]
         if not moves:
@@ -590,40 +597,54 @@ def _trapped_phrase(board: chess.Board, square: chess.Square) -> str:
     return f"trapped the {name} on {chess.square_name(square)} with no safe escape"
 
 
+def _new_motifs(detector, board_before, board_after, mover) -> List[chess.Square]:
+    """Squares ``detector`` flags in ``board_after`` that it did NOT already
+    flag in ``board_before`` — i.e. motifs the move actually caused."""
+    before = set(detector(board_before, mover)) if board_before is not None else set()
+    after = detector(board_after, mover)
+    return [sq for sq in after if sq not in before]
+
+
 def _blunder_threat(board_after: chess.Board,
-                    reply: Optional[chess.Move] = None) -> Optional[str]:
+                    reply: Optional[chess.Move] = None,
+                    board_before: Optional[chess.Board] = None) -> Optional[str]:
     """Classify the immediate tactical damage of a just-played move.
 
     Returns a short label ("walked into mate", "walked into a fork",
     "walked into a pin", "walked into a skewer", "trapped a piece",
     "hung a piece") or None. Mate and fork are claimed only from the
-    opponent's engine-best reply; pin, skewer, trap and hang are static.
+    opponent's engine-best reply; pin, skewer, trap and hang are static but
+    only reported when the move itself caused them (not pre-existing).
     """
     board = board_after.copy()
+    mover = not board.turn
     if _reply_mate(board, reply) is not None:
         return "walked into mate"
     if _fork_after_move(board, reply) is not None:
         return "walked into a fork"
-    if _pinned_pieces(board):
+    if _new_motifs(_pinned_pieces, board_before, board, mover):
         return "walked into a pin"
-    if _skewered_pieces(board):
+    if _new_motifs(_skewered_pieces, board_before, board, mover):
         return "walked into a skewer"
-    if _trapped_pieces(board):
+    if _new_motifs(_trapped_pieces, board_before, board, mover):
         return "trapped a piece"
-    if _hanging_squares(board):
+    if _new_motifs(_hanging_squares, board_before, board, mover):
         return "hung a piece"
     return None
 
 
 def _threat_detail(board_after: chess.Board,
-                   reply: Optional[chess.Move] = None) -> Optional[str]:
+                   reply: Optional[chess.Move] = None,
+                   board_before: Optional[chess.Board] = None) -> Optional[str]:
     """Plain-language detail of the tactical damage, computed in code.
 
     Used by the report so the LLM never has to read a raw FEN and hallucinate
     piece positions. Mate and fork are reported only from the opponent's actual
-    best reply; otherwise a pin, skewer, trap, then a hung piece, is named.
+    best reply; otherwise a pin, skewer, trap, then a hung piece, is named —
+    and only when the move itself caused it.
     """
     board = board_after.copy()
+    mover = not board.turn
     mate = _reply_mate(board, reply)
     if mate:
         if _is_back_rank_mate(board, reply):
@@ -632,16 +653,16 @@ def _threat_detail(board_after: chess.Board,
     fork = _fork_after_move(board, reply)
     if fork:
         return _fork_phrase(fork, board)
-    pinned = _pinned_pieces(board)
+    pinned = _new_motifs(_pinned_pieces, board_before, board, mover)
     if pinned:
         return _pin_phrase(board, pinned[0])
-    skewered = _skewered_pieces(board)
+    skewered = _new_motifs(_skewered_pieces, board_before, board, mover)
     if skewered:
         return _skewer_phrase(board, skewered[0])
-    trapped = _trapped_pieces(board)
+    trapped = _new_motifs(_trapped_pieces, board_before, board, mover)
     if trapped:
         return _trapped_phrase(board, trapped[0])
-    hung = _hanging_squares(board)
+    hung = _new_motifs(_hanging_squares, board_before, board, mover)
     if hung:
         square = hung[0]
         piece = board.piece_at(square)
@@ -998,6 +1019,7 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
             best_uci = None
             pv_line = None
         is_capture = board.is_capture(move)
+        board_before = board.copy()
         board.push(move)
         info_after = None
         try:
@@ -1054,8 +1076,8 @@ def analyze_game(game: Dict[str, Any], engine: chess.engine.SimpleEngine,
                 "class": class_label,
                 "fen": fen_before,
                 "line": pv_line,
-                "threat": _blunder_threat(board, reply),
-                "threat_detail": _threat_detail(board, reply),
+                "threat": _blunder_threat(board, reply, board_before),
+                "threat_detail": _threat_detail(board, reply, board_before),
                 "seconds": seconds,
                 "after_capture": after_capture,
             })
@@ -1326,6 +1348,19 @@ def _date_range(dates: List[datetime]) -> str:
     return f"{start.strftime('%B %d, %Y')} – {end.strftime('%B %d, %Y')}"
 
 
+def _move_number(ply: Optional[int]) -> str:
+    """Standard chess move number for a ply (half-move).
+
+    ply 1 -> "1.", ply 2 -> "1...", ply 25 -> "13.", ply 27 -> "14.".
+    Returns "" when the ply is unknown.
+    """
+    if ply is None:
+        return ""
+    move_no = (ply + 1) // 2
+    suffix = "." if ply % 2 == 1 else "..."
+    return f"{move_no}{suffix}"
+
+
 def build_report_context(reports: List[Dict[str, Any]], platform: str,
                          username: str, habit: str,
                          notes: Optional[str] = None,
@@ -1383,6 +1418,7 @@ def build_report_context(reports: List[Dict[str, Any]], platform: str,
                 "san": b.get("san") or "?",
                 "best": b.get("best"),
                 "ply": b.get("ply"),
+                "move": _move_number(b.get("ply")),
                 "color": b.get("color"),
                 "phase": b.get("phase") or "middlegame",
                 "cp_loss": round((b.get("cp_loss") or 0) / 100.0, 1),
@@ -1640,7 +1676,9 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
                 "not attribute a move to the player without its colour."
             )
         for m in moments:
-            parts = [f"- {m['san']} at ply {m['ply']} ({m['phase']}, lost ~{m['cp_loss']} pawns)"]
+            move_no = m.get("move") or ""
+            head = f"{move_no} {m['san']}".strip()
+            parts = [f"- {head} ({m['phase']}, lost ~{m['cp_loss']} pawns)"]
             if not kid_color and m.get("color"):
                 parts[0] += f" (played by {'White' if m['color'] == 'white' else 'Black'})"
             if m.get("best"):
@@ -1710,11 +1748,13 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
     # Pre-fill the move placeholders with the actual facts so the LLM can only
     # write prose around them, never invent or misattribute a move.
     def _moment_label(m: Dict[str, Any]) -> str:
+        move_no = m.get("move") or ""
         label = m.get("san") or "?"
         best = m.get("best")
         opponent = m.get("opponent") or "your opponent"
         if best and best != (m.get("san") or ""):
             label += f" instead of {best}"
+        label = f"{move_no} {label}".strip()
         return f"{label} (vs {opponent})"
 
     top_moment = moments[0] if moments else None

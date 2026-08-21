@@ -592,6 +592,25 @@ def test_blunder_threat_ignores_pawn_shielding_minor_piece():
     assert cc._threat_detail(board, None) is None
 
 
+def test_threat_detail_ignores_preexisting_pin():
+    # The white knight e3 is already pinned to the king e1 by the rook e8
+    # (and already en prise) BEFORE h3. A quiet move that doesn't create the
+    # motif must not be labelled with it.
+    before = chess.Board("4r2k/8/8/8/8/4N3/7P/4K3 w - - 0 1")
+    after = before.copy()
+    after.push_san("h3")
+    assert chess.E3 in cc._pinned_pieces(after)
+    assert cc._threat_detail(after, None, before) is None
+
+
+def test_move_number():
+    assert cc._move_number(1) == "1."
+    assert cc._move_number(2) == "1..."
+    assert cc._move_number(25) == "13."
+    assert cc._move_number(27) == "14."
+    assert cc._move_number(None) == ""
+
+
 def test_blunder_threat_detects_skewer():
     # Black's queen on f6 is skewered by the white bishop on g5 to the rook e7:
     # the queen must move and the rook falls.
