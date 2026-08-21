@@ -176,27 +176,42 @@ function seedAdmin(db: Database.Database): void {
   const existing = db
     .prepare(`SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1`)
     .get() as { id: number } | undefined;
-  if (existing) return;
 
   const email = process.env.ADMIN_EMAIL?.trim() || "admin@checkmatecoach.app";
-  // No hardcoded default password: if ADMIN_PASSWORD is unset, generate a
-  // random one and print it once so the operator can retrieve it from logs.
+  const configured = process.env.ADMIN_PASSWORD;
+
+  if (existing) {
+    // Keep the admin credential in sync with ADMIN_PASSWORD so the operator
+    // can always regain access by setting the variable and restarting. The
+    // password itself is never written to logs.
+    if (configured && configured.length > 0) {
+      db.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).run(
+        hashPassword(configured),
+        existing.id
+      );
+    }
+    db.prepare(`UPDATE kids SET user_id = ? WHERE user_id IS NULL`).run(existing.id);
+    return;
+  }
+
+  // No hardcoded or default credential. When ADMIN_PASSWORD is unset the admin
+  // account is created locked — an unrecoverable random hash — until the
+  // operator sets ADMIN_PASSWORD and restarts. The password is NEVER printed
+  // to logs: a leaked admin credential would be an account-takeover vector.
   const password =
-    process.env.ADMIN_PASSWORD && process.env.ADMIN_PASSWORD.length > 0
-      ? process.env.ADMIN_PASSWORD
-      : (() => {
-          const generated = randomBytes(16).toString("hex");
-          console.warn("[auth] ADMIN_PASSWORD is not set — generated a random admin password.");
-          console.warn(`[auth] Admin login: ${email}`);
-          console.warn(`[auth] Admin password: ${generated}`);
-          console.warn("[auth] Set ADMIN_PASSWORD in your environment to make this permanent.");
-          return generated;
-        })();
+    configured && configured.length > 0 ? configured : randomBytes(32).toString("hex");
   const hash = hashPassword(password);
   const info = db
     .prepare(`INSERT INTO users (email, password_hash, role, credits) VALUES (?, ?, 'admin', 999999)`)
     .run(email, hash);
   const adminId = Number(info.lastInsertRowid);
+
+  if (!configured || configured.length === 0) {
+    console.warn(
+      "[auth] ADMIN_PASSWORD is not set — the admin account is locked. " +
+        "Set ADMIN_PASSWORD and restart to set a known admin password."
+    );
+  }
 
   // Adopt any pre-existing kids that don't belong to a user yet.
   db.prepare(`UPDATE kids SET user_id = ? WHERE user_id IS NULL`).run(adminId);
