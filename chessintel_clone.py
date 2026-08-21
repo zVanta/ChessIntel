@@ -404,8 +404,14 @@ def _pin_info(board: chess.Board, square: chess.Square) -> Optional[Dict[str, An
             continue
         if slider.piece_type == chess.ROOK and df * dr != 0:
             continue
-        if shielded.piece_type == chess.KING or \
-                _FORK_TARGET_VALUE.get(shielded.piece_type, 0) > piece_val:
+        if shielded.piece_type == chess.KING:
+            return {"slider_square": slider_sq, "shielded_square": shielded_sq}
+        if piece.piece_type == chess.PAWN:
+            # A pawn shielding a non-king piece is ordinary pawn structure
+            # (e.g. a rook behind a pawn chain), not a tactical pin. Only an
+            # absolute pin against the king is worth reporting for a pawn.
+            continue
+        if _FORK_TARGET_VALUE.get(shielded.piece_type, 0) > piece_val:
             return {"slider_square": slider_sq, "shielded_square": shielded_sq}
     return None
 

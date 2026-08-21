@@ -583,6 +583,15 @@ def test_blunder_threat_detects_pin():
     assert cc._threat_detail(board) == "pinned the knight on f6 to the king"
 
 
+def test_blunder_threat_ignores_pawn_shielding_minor_piece():
+    # A rook behind a pawn chain (b6 attacking b2, knight b1 behind, bishop c1
+    # defending b2) is ordinary structure, not a pin. Regression: this used to
+    # be misreported as "pinned the pawn on b2 to the knight on b1".
+    board = chess.Board("3k4/8/1r6/8/8/8/1P6/1NB1K3 b - - 0 1")
+    assert cc._pinned_pieces(board) == []
+    assert cc._threat_detail(board, None) is None
+
+
 def test_blunder_threat_detects_skewer():
     # Black's queen on f6 is skewered by the white bishop on g5 to the rook e7:
     # the queen must move and the rook falls.
