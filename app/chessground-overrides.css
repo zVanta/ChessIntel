@@ -1,0 +1,25 @@
+/* Lichess-style board coordinates: ranks on the right edge, files on the
+   bottom edge, each label anchored to its own row/column.
+
+   chessground 10.1.1 defaults the rank labels to the LEFT and positions them
+   with a fixed -20px offset plus a percentage translate — a hack tuned for one
+   board size that drifts off-row on our responsive boards. These rules move
+   the ranks to the right and anchor both axes to the actual squares. */
+.cg-wrap coords.ranks {
+  left: auto;
+  right: 4px;
+  top: 0;
+}
+
+.cg-wrap coords.ranks coord {
+  transform: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.cg-wrap coords.files {
+  left: 0;
+  bottom: 0;
+  align-items: center;
+}

@@ -8,6 +8,7 @@ import "./globals.css";
 import "@lichess-org/chessground/assets/chessground.base.css";
 import "@lichess-org/chessground/assets/chessground.brown.css";
 import "@lichess-org/chessground/assets/chessground.cburnett.css";
+import "./chessground-overrides.css";
 
 const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME || "Checkmate Coach";
 
