@@ -82,6 +82,7 @@ export default function ChessGameViewer({
       fen: startFen,
       orientation: "white",
       coordinates: true,
+      coordinatesOnSquares: true,
       viewOnly: true,
       disableContextMenu: true,
       animation: { enabled: true, duration: 200 },

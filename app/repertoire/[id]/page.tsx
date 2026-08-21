@@ -57,6 +57,7 @@ function Board({
       orientation,
       turnColor: game.turn() === "w" ? "white" : "black",
       coordinates: true,
+      coordinatesOnSquares: true,
       highlight: { lastMove: true, check: true },
       animation: { enabled: true, duration: 150 },
       lastMove: lastMove as any,

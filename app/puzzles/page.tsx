@@ -237,6 +237,7 @@ export default function PuzzlesPage() {
       orientation: turn(game),
       turnColor: turn(game),
       coordinates: true,
+      coordinatesOnSquares: true,
       highlight: { lastMove: true, check: true },
       animation: { enabled: true, duration: 150 },
       draggable: { enabled: true, showGhost: true },

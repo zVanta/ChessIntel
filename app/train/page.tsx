@@ -18,6 +18,7 @@ function StaticBoard({ fen, orientation }: { fen: string; orientation: "white" |
       fen,
       orientation,
       coordinates: true,
+      coordinatesOnSquares: true,
       viewOnly: true,
       disableContextMenu: true,
     });
@@ -58,6 +59,7 @@ function PlayableBoard({
       orientation,
       turnColor: game.turn() === "w" ? "white" : "black",
       coordinates: true,
+      coordinatesOnSquares: true,
       highlight: { lastMove: true, check: true },
       animation: { enabled: true, duration: 120 },
       movable: {
