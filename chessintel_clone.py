@@ -155,6 +155,15 @@ def _accuracy_from_loss(loss_pct: float) -> float:
     return max(0.0, min(100.0, acc))
 
 
+EVAL_CAP_CP: int = 1000
+
+
+def _cap_eval(cp: int) -> int:
+    """Clamp an eval to ±1000cp (the Lichess/Chess.com convention) so extreme
+    or mate-flattened scores don't distort ACPL and points-lost figures."""
+    return max(-EVAL_CAP_CP, min(EVAL_CAP_CP, cp))
+
+
 def _cp_loss(score_before: int, score_after: int) -> int:
     """Centipawns lost on a move, ignoring the phantom loss from turning a
     forced mate into a merely winning position.
@@ -162,10 +171,11 @@ def _cp_loss(score_before: int, score_after: int) -> int:
     ``score_before``/``score_after`` are flattened centipawns where a forced
     mate reads as ±10000 (``mate_score``). A move that converts mate-in-N into
     a still-clearly-winning position is NOT a blunder, so its loss reads 0.
+    Both evals are then capped at ±1000cp before the subtraction.
     """
     if score_before >= MATE_SCORE_CP and score_after >= DECISIVE_CP:
         return 0
-    return score_before - score_after
+    return _cap_eval(score_before) - _cap_eval(score_after)
 
 
 # ---------------------------------------------------------------------------
@@ -423,20 +433,111 @@ def _pin_phrase(board: chess.Board, square: chess.Square) -> str:
     )
 
 
+def _skewer_info(board: chess.Board, square: chess.Square) -> Optional[Dict[str, Any]]:
+    """If the piece on ``square`` is skewered by an enemy slider — a LESS
+    valuable same-color piece sits behind it on the slider's line, so moving
+    the front piece loses the piece behind — return
+    ``{"slider_square", "behind_square", "front_square"}``; else None."""
+    piece = board.piece_at(square)
+    if piece is None or piece.piece_type == chess.KING:
+        return None
+    color = piece.color
+    enemy = not color
+    piece_val = _FORK_TARGET_VALUE.get(piece.piece_type, 0)
+    f, r = chess.square_file(square), chess.square_rank(square)
+    for df, dr in _SLIDER_DIRS:
+        ff, rr, behind_sq = f + df, r + dr, None
+        while 0 <= ff < 8 and 0 <= rr < 8:
+            s = chess.square(ff, rr)
+            p = board.piece_at(s)
+            if p is not None:
+                if p.color == color:
+                    behind_sq = s
+                break
+            ff += df
+            rr += dr
+        if behind_sq is None:
+            continue
+        behind = board.piece_at(behind_sq)
+        if behind.piece_type == chess.KING:
+            continue
+        if _FORK_TARGET_VALUE.get(behind.piece_type, 0) >= piece_val:
+            continue
+        ff, rr, slider_sq = f - df, r - dr, None
+        while 0 <= ff < 8 and 0 <= rr < 8:
+            s = chess.square(ff, rr)
+            p = board.piece_at(s)
+            if p is not None:
+                if p.color == enemy and p.piece_type in (chess.BISHOP, chess.ROOK, chess.QUEEN):
+                    slider_sq = s
+                break
+            ff -= df
+            rr -= dr
+        if slider_sq is None:
+            continue
+        slider = board.piece_at(slider_sq)
+        if slider.piece_type == chess.BISHOP and df * dr == 0:
+            continue
+        if slider.piece_type == chess.ROOK and df * dr != 0:
+            continue
+        return {"slider_square": slider_sq, "behind_square": behind_sq, "front_square": square}
+    return None
+
+
+def _skewered_pieces(board: chess.Board) -> List[chess.Square]:
+    """Squares of the side that just moved whose piece is genuinely skewered."""
+    mover = not board.turn
+    return [
+        sq for sq, p in board.piece_map().items()
+        if p.color == mover and p.piece_type != chess.KING and _skewer_info(board, sq)
+    ]
+
+
+def _skewer_phrase(board: chess.Board, square: chess.Square) -> str:
+    info = _skewer_info(board, square)
+    front = board.piece_at(square)
+    behind = board.piece_at(info["behind_square"])
+    fname = chess.piece_name(front.piece_type) if front else "piece"
+    bname = chess.piece_name(behind.piece_type) if behind else "piece"
+    return (
+        f"skewered the {fname} on {chess.square_name(square)} to the "
+        f"{bname} on {chess.square_name(info['behind_square'])}"
+    )
+
+
+def _reply_mate(board_after: chess.Board,
+                reply: Optional[chess.Move]) -> Optional[str]:
+    """Return the SAN of the opponent's engine-best reply when it delivers
+    checkmate immediately (mate in one); else None."""
+    if reply is None:
+        return None
+    board = board_after.copy()
+    try:
+        san = board.san(reply)
+        board.push(reply)
+    except Exception:
+        return None
+    return san if board.is_checkmate() else None
+
+
 def _blunder_threat(board_after: chess.Board,
                     reply: Optional[chess.Move] = None) -> Optional[str]:
     """Classify the immediate tactical damage of a just-played move.
 
-    Returns a short label ("hung a piece", "walked into a fork",
-    "walked into a pin") or None. A fork is only claimed when the opponent's
-    engine-best reply is itself the fork; a pin is claimed from the static
-    board (a slider pinning a piece to the king or a more valuable piece).
+    Returns a short label ("walked into mate", "walked into a fork",
+    "walked into a pin", "walked into a skewer", "hung a piece") or None.
+    Mate and fork are claimed only from the opponent's engine-best reply; pin
+    and skewer are claimed from the static board geometry.
     """
     board = board_after.copy()
+    if _reply_mate(board, reply) is not None:
+        return "walked into mate"
     if _fork_after_move(board, reply) is not None:
         return "walked into a fork"
     if _pinned_pieces(board):
         return "walked into a pin"
+    if _skewered_pieces(board):
+        return "walked into a skewer"
     if _hanging_squares(board):
         return "hung a piece"
     return None
@@ -447,16 +548,22 @@ def _threat_detail(board_after: chess.Board,
     """Plain-language detail of the tactical damage, computed in code.
 
     Used by the report so the LLM never has to read a raw FEN and hallucinate
-    piece positions. A fork is reported only when it is the opponent's actual
-    best reply; otherwise a genuine pin, then a hung piece, is named.
+    piece positions. Mate and fork are reported only from the opponent's actual
+    best reply; otherwise a genuine pin, skewer, then a hung piece, is named.
     """
     board = board_after.copy()
+    mate = _reply_mate(board, reply)
+    if mate:
+        return f"allowed checkmate ({mate})"
     fork = _fork_after_move(board, reply)
     if fork:
         return _fork_phrase(fork, board)
     pinned = _pinned_pieces(board)
     if pinned:
         return _pin_phrase(board, pinned[0])
+    skewered = _skewered_pieces(board)
+    if skewered:
+        return _skewer_phrase(board, skewered[0])
     hung = _hanging_squares(board)
     if hung:
         square = hung[0]
@@ -941,6 +1048,10 @@ def _tag_blunders(blunders: List[Dict[str, Any]]) -> List[str]:
             tags.append("Fork awareness")
         elif threat == "walked into a pin":
             tags.append("Pin awareness")
+        elif threat == "walked into a skewer":
+            tags.append("Skewer awareness")
+        elif threat == "walked into mate":
+            tags.append("Mate awareness")
     # De-duplicate while preserving frequency order for aggregation.
     seen = set()
     result = []

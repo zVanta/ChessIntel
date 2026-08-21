@@ -375,8 +375,9 @@ def test_spar_move_none_on_game_over():
 def test_cp_loss_ignores_mate_to_win():
     # A forced mate (~10000cp) converted to a still-winning +7.1 is not a loss.
     assert cc._cp_loss(9997, 710) == 0
-    # Throwing a forced mate away into a losing position IS a blunder.
-    assert cc._cp_loss(9997, -800) == 10797
+    # Throwing a forced mate away into a losing position IS a blunder — but the
+    # loss is capped at ±1000cp (Lichess convention), not a phantom 107 pawns.
+    assert cc._cp_loss(9997, -800) == 1800
     # Normal evals pass through untouched.
     assert cc._cp_loss(750, 0) == 750
 
@@ -580,6 +581,21 @@ def test_blunder_threat_detects_pin():
     board = chess.Board("3k4/8/5n2/6B1/8/8/8/K7 w - - 0 1")
     assert cc._blunder_threat(board) == "walked into a pin"
     assert cc._threat_detail(board) == "pinned the knight on f6 to the king"
+
+
+def test_blunder_threat_detects_skewer():
+    # Black's queen on f6 is skewered by the white bishop on g5 to the rook e7:
+    # the queen must move and the rook falls.
+    board = chess.Board("3k4/4r3/5q2/6B1/8/8/8/K7 w - - 0 1")
+    assert cc._blunder_threat(board) == "walked into a skewer"
+    assert cc._threat_detail(board) == "skewered the queen on f6 to the rook on e7"
+
+
+def test_blunder_threat_detects_mate():
+    # White's engine-best reply Ra8 is back-rank mate against the black king.
+    board = chess.Board("6k1/5ppp/8/8/8/8/8/R6K w - - 0 1")
+    assert cc._blunder_threat(board, chess.Move.from_uci("a1a8")) == "walked into mate"
+    assert cc._threat_detail(board, chess.Move.from_uci("a1a8")) == "allowed checkmate (Ra8#)"
 
 
 def test_threat_detail_names_hanging_piece():
