@@ -1258,7 +1258,7 @@ SITE_URL: str = os.environ.get("SITE_URL", "chess.njxai.com")
 SITE_CONTACT: str = os.environ.get("SITE_CONTACT", "info@checkmatecoach.app")
 
 _REPORT_DISCLOSURE = (
-    "*Positions analyzed by Stockfish · coaching notes written by an AI assistant.*"
+    "*Positions analyzed by Stockfish · report generated from engine data only.*"
 )
 
 
@@ -1922,11 +1922,13 @@ def _report_user_prompt(kid_name: str, habit: str, game_count: int,
 
 
 def _build_markdown_report(kid_name: str, habit: str, game_count: int,
-                           drill: str, ctx: Dict[str, Any]) -> str:
-    """Deterministic markdown report used when no LLM is configured.
+                           ctx: Dict[str, Any]) -> str:
+    """Deterministic, fully objective markdown report.
 
-    Reads like a coach's letter, not a filled-in form: each moment is phrased
-    differently, and a move is never pitted against itself.
+    Every line is derived directly from the engine facts — results, move
+    accuracy, move-quality counts, eval loss, and the engine's preferred
+    moves. There is no coaching opinion, praise, drill, or invented
+    explanation, so the output can never contradict the engine.
     """
     platform = ctx.get("platform") or "online"
     date_range = ctx.get("date_range") or "recent games"
@@ -1934,155 +1936,134 @@ def _build_markdown_report(kid_name: str, habit: str, game_count: int,
     losses = ctx.get("losses", 0)
     draws = ctx.get("draws", 0)
     moments = ctx.get("moments") or []
-    openings = ctx.get("openings") or []
     avg_accuracy = ctx.get("avg_accuracy") or 0
+    acpl = ctx.get("acpl") or 0
+    rating = ctx.get("rating")
+    kid_color = ctx.get("kid_color")
+    acc_white = ctx.get("accuracy_white") or 0
+    acc_black = ctx.get("accuracy_black") or 0
+    cc_w = ctx.get("class_counts_white") or {}
+    cc_b = ctx.get("class_counts_black") or {}
+    cc_all = ctx.get("class_counts") or {}
+    games_brief = ctx.get("games_brief") or []
+    time_stats = ctx.get("time_stats")
 
     def _plural(n: int, word: str) -> str:
         if n == 1:
             return f"1 {word}"
         return f"{n} {word}es" if word.endswith("s") else f"{n} {word}s"
 
-    results = f"{_plural(wins, 'win')}, {_plural(losses, 'loss')}, {_plural(draws, 'draw')}"
-
-    # ---- Short version ------------------------------------------------------
-    if moments:
-        top = moments[0]
-        best_move = _safe_best(top)
-        key = f"{top['san']}" + (f" (Stockfish preferred {best_move})" if best_move else "")
-        short = (
-            f"{kid_name} played {game_count} game{'s' if game_count != 1 else ''} this set — "
-            f"{results}. The one pattern behind the points lost is \"{habit}\", and the "
-            f"clearest example is {key} vs {top['opponent']}. This week is about a single "
-            f"trainable habit: {habit}"
-        )
-    else:
-        short = (
-            f"{kid_name} played {game_count} game{'s' if game_count != 1 else ''} this set — "
-            f"{results}. The pattern to track is \"{habit}\". This week is about one habit: {habit}"
-        )
-
-    # ---- What's working ------------------------------------------------------
-    if openings:
-        positives = (
-            f"**The openings are a strength.** {kid_name} reached {', '.join(openings[:3])} "
-            f"and played them confidently, and the {_plural(wins, 'win')} were converted "
-            "cleanly. That foundation is real — it is exactly what the next habit builds on."
-        )
-    else:
-        positives = (
-            f"**Finishing wins.** {kid_name} converted {_plural(wins, 'winning game')} "
-            "without giving the point back. That is a real skill, and the foundation to build on."
-        )
-
-    # ---- Moments, each phrased differently ----------------------------------
-    moment_intros = [
-        "The moment that shows the pattern most clearly.",
-        "A second example, from a different game, tells the same story.",
-        "One more — the same habit, in a different phase of the game.",
-    ]
-    moment_takeaways = [
-        "The fix is the pause: before moving, name what the move actually improves.",
-        "Same lesson, new shape — check what you leave behind before you commit.",
-        "It keeps coming back to one thing: have a reason for the move, not just a move.",
-    ]
-    moment_blocks = []
-    for i, m in enumerate(moments[:3]):
-        san = m.get("san") or "?"
-        best_move = _safe_best(m)
-        opp = m.get("opponent") or "your opponent"
-        phase = m.get("phase") or "middlegame"
-        cost = m.get("cp_loss") or 0
-        ply = m.get("ply")
-        at = f" at ply {ply}" if ply else ""
-        engine_part = f" Stockfish wanted {best_move} there." if best_move else ""
-        moment_blocks.append(
-            f"### {i + 1}. {moment_intros[i]}\n\n"
-            f"In the {phase} against {opp}, {san}{at} cost about {cost} pawns.{engine_part} "
-            f"{moment_takeaways[i]}"
-        )
-
-    # ---- Drill ----------------------------------------------------------------
-    if moments:
-        top = moments[0]
-        best_move = _safe_best(top)
-        if best_move:
-            drill_steps = (
-                f"**{habit} — the 15-minute sharpener**\n\n"
-                f"1. Set up the position just before {top['san']} against {top['opponent']}.\n"
-                f"2. Find the engine's move ({best_move}) and say out loud why it is safer.\n"
-                f"3. Do the same for the other moments below.\n\n"
-                f"**Got it when:** you name the safer move in under 10 seconds, 3 in a row.\n\n"
-                f"{drill}"
+    def _class_summary(counts: Dict[str, int]) -> str:
+        counts = counts or {}
+        return (
+            ", ".join(
+                f"{label}s: {counts.get(label, 0)}"
+                for label in ("blunder", "mistake", "inaccuracy",
+                              "okay", "excellent", "best")
+                if counts.get(label)
             )
-        else:
-            drill_steps = (
-                f"**{habit} — the 15-minute sharpener**\n\n"
-                f"1. Set up the position just before {top['san']} against {top['opponent']}.\n"
-                f"2. Name what the move leaves undefended.\n"
-                f"3. Write down the safer alternative.\n\n"
-                f"**Got it when:** you spot the hang before you move, 3 times in a row.\n\n"
-                f"{drill}"
-            )
-    else:
-        drill_steps = (
-            f"**{habit} — the 15-minute sharpener**\n\n"
-            f"1. Re-play each key moment on a board.\n"
-            f"2. Name what the move leaves behind.\n"
-            f"3. Write down the safer alternative.\n\n"
-            f"**Got it when:** you can explain the fix in one sentence.\n\n"
-            f"{drill}"
+            or "no classified moves"
         )
 
-    coach_brief = f"Pre-lesson brief: {kid_name}'s recurring leak is \"{habit}\"."
-    if moments:
-        coach_brief += " It showed up in: " + "; ".join(
-            f"{m['san']} (ply {m['ply']}) vs {m['opponent']}" for m in moments[:3]
-        ) + "."
-    phase_word = "endgame" if (moments and moments[0].get("phase") == "endgame") else "middlegame"
-    coach_brief += (
-        f" At the next lesson, show a few {phase_word} positions and ask {kid_name} "
-        "to name the danger squares before moving — ten focused minutes."
-    )
+    if kid_color == "white" and acc_white:
+        acc_text = f"Move accuracy (playing White) {acc_white}%"
+    elif kid_color == "black" and acc_black:
+        acc_text = f"Move accuracy (playing Black) {acc_black}%"
+    elif acc_white or acc_black:
+        acc_text = f"Move accuracy — White {acc_white}%, Black {acc_black}%"
+    elif avg_accuracy:
+        acc_text = f"Average move accuracy {avg_accuracy}%"
+    else:
+        acc_text = None
 
-    accuracy_note = f"Move accuracy averaged {avg_accuracy}%." if avg_accuracy else ""
+    short = f"{kid_name} played {game_count} game{'s' if game_count != 1 else ''}: " \
+        f"{_plural(wins, 'win')}, {_plural(losses, 'loss')}, {_plural(draws, 'draw')}."
+    if acc_text:
+        short += f" {acc_text}."
+    short += f" The most common mistake type was {habit}."
 
-    return "\n\n---\n\n".join([
+    blocks: List[str] = [
         f"# {kid_name} — Game Set Report",
         f"{game_count} Online Games · {platform} · {date_range}",
+        "",
         "## Short version",
+        "",
         short,
-        f"**Baseline read:** {game_count} recent online games  \n"
-        f"**Pattern found:** {habit}  \n"
-        f"**The habit to train:** {habit}  \n"
-        "**Tracking:** Begins with this report",
-        "## First, the wide view",
-        (
-            f"Across this set — {results} — the thing costing the most points is \"{habit}\". "
-            f"{accuracy_note} It is a habit, not a talent ceiling, and habits are the most "
-            "fixable thing in chess."
-        ),
-        "## What's working",
-        positives,
-        "## The patterns costing you points",
-        *moment_blocks,
-        "## Your bottleneck right now",
-        (
-            f"If you fix one thing this month, fix \"{habit}\". Everything else is already "
-            "good enough to win; this is the one leak that shows up move after move."
-        ),
-        "## One drill for this week",
-        drill_steps,
-        "## For your coach",
-        coach_brief,
-        f"Questions? Email [{SITE_CONTACT}](mailto:{SITE_CONTACT})  \n"
-        f"— The {SITE_NAME} team",
-        _REPORT_DISCLOSURE,
-        (
-            "*One more thing: online games show habits, but tournament games are where "
-            "they cost points. Photograph a scoresheet or paste a PGN on the Analyze "
-            "page and the next report reads the real over-the-board play.*"
-        ),
-    ])
+        "",
+        "## Results",
+        "",
+        f"- Result: {_plural(wins, 'win')}, {_plural(losses, 'loss')}, {_plural(draws, 'draw')}",
+    ]
+    if acc_text:
+        blocks.append(f"- {acc_text}")
+    if acpl:
+        blocks.append(f"- Average centipawn loss: {acpl}")
+    if rating:
+        blocks.append(f"- Rating: {rating}")
+
+    quality: List[str] = []
+    if cc_w or cc_b:
+        if kid_color in ("white", "black"):
+            counts = cc_w if kid_color == "white" else cc_b
+            quality.append(f"- {kid_color.title()}: {_class_summary(counts)}")
+        else:
+            quality.append(f"- White: {_class_summary(cc_w)}")
+            quality.append(f"- Black: {_class_summary(cc_b)}")
+    elif cc_all:
+        quality.append(f"- Both sides: {_class_summary(cc_all)}")
+    if quality:
+        blocks += ["", "## Move quality", ""] + quality
+
+    if games_brief:
+        game_lines = []
+        for g in games_brief[:12]:
+            seg = f"- vs {g.get('opponent') or 'Opponent'}: {g.get('result') or '*'}"
+            if g.get("moves"):
+                seg += f", {g['moves']} moves"
+            if g.get("opening"):
+                seg += f", {g['opening']}"
+            game_lines.append(seg)
+        blocks += ["", "## Games reviewed", ""] + game_lines
+
+    if moments:
+        mistake_blocks = []
+        for m in moments:
+            head = f"{m.get('move') or ''} {m.get('san') or '?'}".strip()
+            lines = [
+                f"### {head} (vs {m.get('opponent') or 'Opponent'})",
+                f"- Phase: {m.get('phase') or 'middlegame'}",
+                f"- Cost: ~{m.get('cp_loss') or 0} pawns",
+                f"- Engine preferred move: {m.get('best') or 'not recorded'}",
+            ]
+            if m.get("line"):
+                lines.append(f"- Engine line: {m['line']}")
+            detail = m.get("threat_detail") or m.get("threat")
+            lines.append(f"- Tactical issue: {detail}" if detail
+                         else "- Tactical issue: none detected")
+            mistake_blocks.append("\n".join(lines))
+        blocks += ["", "## Mistakes found", ""] + mistake_blocks
+    else:
+        blocks += ["", "## Mistakes found", "",
+                   "- No blunders were flagged in this set."]
+
+    blocks += ["", "## Most common mistake type", "", f"- {habit}"]
+
+    if time_stats:
+        t = [f"- Moves with clock data: {time_stats.get('moves_with_clock', 0)}"]
+        if time_stats.get("instant_moves"):
+            t.append(f"- Moves played in under 3 seconds: {time_stats.get('instant_moves')}")
+        if time_stats.get("median_clean") is not None and time_stats.get("median_error") is not None:
+            t.append(
+                f"- Median time: {_fmt_seconds(time_stats.get('median_clean'))} on sound moves, "
+                f"{_fmt_seconds(time_stats.get('median_error'))} on mistakes"
+            )
+        reflex = time_stats.get("reflex_errors") or []
+        if reflex:
+            t.append(f"- Mistakes played in under 3 seconds: {len(reflex)}")
+        blocks += ["", "## Time", ""] + t
+
+    blocks += ["---", _REPORT_DISCLOSURE]
+    return re.sub(r"\n{3,}", "\n\n", "\n\n".join(blocks)).strip()
 
 
 _MOVE_TOKEN_RE = re.compile(
@@ -2177,10 +2158,13 @@ def generate_report(kid_name: str, habit: str, game_count: int,
                     api_key: Optional[str] = None,
                     context: Optional[Dict[str, Any]] = None,
                     extra_moves: Optional[Iterable[str]] = None) -> str:
-    """Generate a full markdown coach report for a kid.
+    """Generate a fully objective markdown coach report for a kid.
 
-    Uses the configured LLM provider (DeepSeek by default, or LibreChat — see
-    llm.py); otherwise returns a deterministic fallback report.
+    The report is assembled deterministically from the engine facts only. No
+    language model writes any part of it, so the output can never contain
+    subjective prose, praise, or an invented move, square, or tactic. The
+    ``api_key``/``extra_moves`` parameters are kept for call compatibility but
+    are no longer used.
     """
     ctx = context or {
         "platform": "online",
@@ -2193,29 +2177,7 @@ def generate_report(kid_name: str, habit: str, game_count: int,
         "notes": "",
         "answers": [],
     }
-    drill = _make_drill(habit, ctx)
-    fallback = _build_markdown_report(kid_name, habit, game_count, drill, ctx)
-    user_prompt = _report_user_prompt(kid_name, habit, game_count, drill, ctx)
-
-    # Try the configured model first, then the fast DeepSeek model, and only
-    # then the deterministic template. deepseek-reasoner can exceed the request
-    # timeout on long prompts, and a failed, empty, or fact-dropping answer
-    # must never silently downgrade the whole report to the formulaic fallback.
-    for model in (None, "deepseek-chat"):
-        try:
-            text = llm.complete(
-                _REPORT_SYSTEM,
-                user_prompt,
-                temperature=0.4,
-                api_key=api_key,
-                model=model,
-            )
-            cleaned = (text or "").strip()
-            if cleaned and _report_facts_intact(cleaned, ctx, extra_moves):
-                return cleaned
-        except Exception:
-            continue
-    return fallback
+    return _build_markdown_report(kid_name, habit, game_count, ctx)
 
 
 # ---------------------------------------------------------------------------
@@ -2404,11 +2366,10 @@ def _short_version(markdown: str) -> str:
     if idx == -1:
         return markdown.strip().splitlines()[0] if markdown.strip() else ""
     rest = markdown[idx + len(marker):]
-    parts = rest.split("\n---")
-    para = " ".join(
-        line.strip() for line in parts[0].splitlines()
-        if line.strip() and not line.strip().startswith("#")
-    )
+    next_heading = rest.find("\n## ")
+    if next_heading != -1:
+        rest = rest[:next_heading]
+    para = " ".join(line.strip() for line in rest.splitlines() if line.strip())
     return para or markdown.strip().splitlines()[0]
 
 

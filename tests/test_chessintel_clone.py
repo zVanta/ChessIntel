@@ -450,20 +450,24 @@ def test_generate_report_fallback_without_key(monkeypatch):
     assert "3" in text
 
 
-def test_generate_report_retries_with_fast_model(monkeypatch):
+def test_generate_report_is_deterministic_and_objective(monkeypatch):
     import llm
-    calls = []
 
-    def fake_complete(system, user, temperature=0.7, api_key=None, model=None):
-        calls.append(model)
-        if model is None:
-            raise RuntimeError("timeout")
-        return "# Alex — Game Set Report\n\nShort version text."
+    def boom(*args, **kwargs):
+        raise AssertionError("generate_report must not call the LLM")
 
-    monkeypatch.setattr(llm, "complete", fake_complete)
+    monkeypatch.setattr(llm, "complete", boom)
     text = cc.generate_report("Alex", "Piece safety", 3)
-    assert calls == [None, "deepseek-chat"]
-    assert "Short version" in text
+    assert "Alex" in text
+    assert "Piece safety" in text
+    assert "3" in text
+    assert "## Results" in text
+    assert "## Mistakes found" in text
+    # No subjective coaching language may appear.
+    lowered = text.lower()
+    for bad in ("why it looked good", "the fix is the pause", "talent ceiling",
+                "what's working", "one drill", "for your coach", "pre-lesson"):
+        assert bad not in lowered
 
 
 def test_report_facts_intact_requires_kept_engine_facts():
