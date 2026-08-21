@@ -182,7 +182,7 @@ export default function SparringPage() {
 
       <div className="flex flex-col gap-6 sm:flex-row">
         <div className="sm:w-2/3">
-          <div className="overflow-hidden rounded-lg border border-slate-200 shadow-sm">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <Board
               fen={fen}
               orientation={kidColor}

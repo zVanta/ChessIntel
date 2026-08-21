@@ -279,7 +279,7 @@ export default function PuzzlesPage() {
       )}
 
       {(status === "playing" || status === "solved") && puzzle && (
-        <div className="grid gap-6 md:grid-cols-[minmax(0,400px)_1fr]">
+        <div className="grid gap-6 md:grid-cols-[minmax(0,480px)_1fr]">
           <div className="rounded-xl border border-slate-200 bg-white p-4">
             <div ref={boardRef} className="aspect-square w-full" style={{ touchAction: "none" }} />
           </div>

@@ -23,7 +23,7 @@ function StaticBoard({ fen, orientation }: { fen: string; orientation: "white" |
     });
     return () => cg.destroy();
   }, [fen, orientation]);
-  return <div ref={ref} className="aspect-square w-full max-w-sm" />;
+  return <div ref={ref} className="aspect-square w-full max-w-md" />;
 }
 
 function destsFor(game: Chess): any {
@@ -71,7 +71,7 @@ function PlayableBoard({
     return () => cg.destroy();
   }, [fen, orientation]);
 
-  return <div ref={ref} className="aspect-square w-full max-w-sm" style={{ touchAction: "none" }} />;
+  return <div ref={ref} className="aspect-square w-full max-w-md" style={{ touchAction: "none" }} />;
 }
 
 export default function TrainPage() {
